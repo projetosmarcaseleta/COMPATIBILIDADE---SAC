@@ -218,7 +218,7 @@ HTML_TEMPLATE = """
             <div class="eper-panel">
                 <div class="eper-panel-header">Detalhes</div>
                 <div class="eper-panel-title">
-                    <i class="bi bi-cart-plus"></i> {{ part }} - RESULTADOS DA BUSCA
+                    <i class="bi bi-cart-plus"></i> Código da Peça: {{ part }}
                 </div>
                 <div class="eper-panel-body">
                     {% if "Nenhuma aplicação" in result %}
@@ -294,7 +294,7 @@ def index():
                 if data is None:
                     error_text = "A API não retornou dados ou a autenticação final falhou."
                 else:
-                    result_text = fiat_parts_tool.format_applicability(data)
+                    result_text = fiat_parts_tool.format_applicability(data, part)
                 
             except Exception as e:
                 error_text = str(e)

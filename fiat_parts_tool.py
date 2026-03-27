@@ -349,12 +349,17 @@ def query_with_retry(part_number: str, vc: str = None, headless: bool = True) ->
 
 # ── Output Formatting ──────────────────────────────────────────────────────────
 
-def format_applicability(data: dict) -> str:
+def format_applicability(data: dict, part_number: str = "") -> str:
     """Format the API response into a readable table."""
     lines = []
     lines.append("=" * 90)
-    # The API might not return partDescription directly at root
-    lines.append(f"  APROPRIAÇÃO DA PEÇA: {data.get('partCode', '14144190')}")
+    
+    # Define o código da peça usando o retorno da API ou o parâmetro providenciado
+    part_code = data.get("partCode")
+    if not part_code:
+         part_code = part_number
+         
+    lines.append(f"  Código da Peça: {part_code}")
     lines.append("=" * 90)
 
     applications = data.get("catalog", [])
