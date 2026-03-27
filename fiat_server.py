@@ -1,5 +1,8 @@
 import time
 import threading
+import json
+import requests
+from bs4 import BeautifulSoup
 from flask import Flask, request, render_template_string
 import fiat_parts_tool
 
@@ -168,7 +171,136 @@ HTML_TEMPLATE = """
             max-height: 400px;
             overflow-y: auto;
         }
+
+        /* Product Cards */
+        .product-card {
+            background: white;
+            border: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .product-card-img-wrap {
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 160px;
+            overflow: hidden;
+            border-bottom: 1px solid #eee;
+        }
+        .product-card-img-wrap img {
+            max-height: 150px;
+            max-width: 100%;
+            object-fit: contain;
+        }
+        .product-card-body {
+            padding: 12px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .product-card-name {
+            font-size: 0.8rem;
+            color: #333;
+            font-weight: 500;
+            line-height: 1.35;
+            flex: 1;
+            margin-bottom: 10px;
+        }
+        .product-card-price-original {
+            font-size: 0.75rem;
+            color: #999;
+            text-decoration: line-through;
+            margin-bottom: 2px;
+        }
+        .product-card-price-pix {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #1a7a2e;
+            margin-bottom: 2px;
+        }
+        .product-card-price-pix-label {
+            font-size: 0.7rem;
+            color: #1a7a2e;
+            margin-bottom: 4px;
+        }
+        .product-card-installments {
+            font-size: 0.72rem;
+            color: #555;
+            margin-bottom: 12px;
+        }
+        .btn-product-actions {
+            display: flex;
+            width: 100%;
+        }
+        .btn-link-product {
+            background-color: #005fa9;
+            color: white;
+            border: none;
+            border-radius: 0;
+            padding: 8px 6px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            flex: 1;
+            text-align: center;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .btn-link-product:hover {
+            background-color: #004d8a;
+            color: white;
+        }
+        .btn-copy-product {
+            background-color: #4a4a6a;
+            color: white;
+            border: none;
+            border-left: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0;
+            padding: 8px 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            min-width: 36px;
+        }
+        .btn-copy-product:hover {
+            background-color: #36365a;
+        }
+        .btn-copy-product.copied {
+            background-color: #1a7a2e;
+        }
+        .product-unavailable {
+            font-size: 0.72rem;
+            color: #bf1018;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .no-results-msg {
+            text-align: center;
+            padding: 30px 20px;
+            color: #555;
+            font-size: 0.9rem;
+        }
     </style>
+    <script>
+    function copyProductLink(btn, url) {
+        navigator.clipboard.writeText(url).then(function() {
+            btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+            btn.classList.add('copied');
+            setTimeout(function() {
+                btn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                btn.classList.remove('copied');
+            }, 1500);
+        });
+    }
+    </script>
 </head>
 <body>
 
@@ -191,7 +323,7 @@ HTML_TEMPLATE = """
     <div class="container-fluid px-4">
         
         <!-- Search Area -->
-        <div class="search-container">
+        <div class="search-container" style="flex-direction: column; gap: 10px;">
             <form method="POST" class="w-100 d-flex flex-column align-items-center">
                 <div class="d-flex w-100" style="max-width: 700px; margin-bottom: 5px;">
                     <div style="width: 40%; padding-left: 5px;"><label for="part" class="form-label text-muted small fw-bold mb-0" style="font-size: 0.75rem;">CÓDIGO DA PEÇA</label></div>
@@ -200,6 +332,15 @@ HTML_TEMPLATE = """
                 <div class="search-box">
                     <input type="text" class="form-control" style="width: 40%; border-right: 1px solid #eee;" id="part" name="part" value="{{ part }}" required placeholder="Ex: 14144190">
                     <input type="text" class="form-control" style="width: 60%;" id="vc" name="vc" value="{{ vc }}" placeholder="Ex: 9BWAA01J754038498">
+                    <button type="submit" class="btn btn-search"><i class="bi bi-search"></i></button>
+                </div>
+            </form>
+            <form method="POST" class="w-100 d-flex flex-column align-items-center">
+                <div class="d-flex w-100" style="max-width: 700px; margin-bottom: 5px;">
+                    <div style="padding-left: 5px;"><label for="name_query" class="form-label text-muted small fw-bold mb-0" style="font-size: 0.75rem;">BUSCAR POR NOME (FiatPecas.com.br)</label></div>
+                </div>
+                <div class="search-box">
+                    <input type="text" class="form-control" id="name_query" name="name_query" value="{{ name_query }}" placeholder="Ex: Lâmpada pingo d'água w5w">
                     <button type="submit" class="btn btn-search"><i class="bi bi-search"></i></button>
                 </div>
             </form>
@@ -250,12 +391,163 @@ HTML_TEMPLATE = """
 
         </div>
         {% endif %}
-        
+
+        {% if products %}
+        <!-- FiatPecas Products Panel -->
+        <div class="mx-auto" style="max-width: 1200px;">
+            <div class="eper-panel mt-4">
+                <div class="eper-panel-header"><i class="bi bi-shop me-1"></i> Produtos Encontrados no FiatPecas.com.br</div>
+                <div class="p-3">
+                    <div class="row g-3">
+                        {% for p in products %}
+                        <div class="col-6 col-sm-4 col-md-3 col-lg-2">
+                            <div class="product-card">
+                                <div class="product-card-img-wrap">
+                                    {% if p.image %}
+                                    <img src="{{ p.image }}" alt="{{ p.name }}" loading="lazy">
+                                    {% else %}
+                                    <i class="bi bi-image text-muted" style="font-size:2rem;"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="product-card-body">
+                                    <div class="product-card-name">{{ p.name }}</div>
+                                    {% if p.price_original and p.price_pix and p.price_original != p.price_pix %}
+                                    <div class="product-card-price-original">{{ p.price_original }}</div>
+                                    {% endif %}
+                                    {% if p.price_pix %}
+                                    <div class="product-card-price-pix">{{ p.price_pix }}</div>
+                                    <div class="product-card-price-pix-label">no PIX</div>
+                                    {% elif p.price_original %}
+                                    <div class="product-card-price-pix">{{ p.price_original }}</div>
+                                    {% endif %}
+                                    {% if p.installments %}
+                                    <div class="product-card-installments">{{ p.installments }}</div>
+                                    {% endif %}
+                                    {% if not p.available %}
+                                    <div class="product-unavailable">Indisponível</div>
+                                    {% endif %}
+                                </div>
+                                <div class="btn-product-actions">
+                                    <a href="{{ p.url }}" target="_blank" class="btn-link-product"><i class="bi bi-box-arrow-up-right"></i> LINK</a>
+                                    <button type="button" class="btn-copy-product" title="Copiar link" data-url="{{ p.url }}" onclick="copyProductLink(this, this.dataset.url)"><i class="bi bi-clipboard"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if not products and (part or name_query) and not error %}
+        <div class="mx-auto" style="max-width: 1200px;">
+            <div class="eper-panel mt-4">
+                <div class="eper-panel-header"><i class="bi bi-shop me-1"></i> Produtos Encontrados no FiatPecas.com.br</div>
+                <div class="no-results-msg">
+                    <i class="bi bi-search" style="font-size:1.5rem; color:#aaa; display:block; margin-bottom:8px;"></i>
+                    Desculpe, sua busca por <strong>"{{ name_query if name_query else part }}"</strong> não retornou nenhum resultado.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
     </div>
 
 </body>
 </html>
 """
+
+def search_fiatpecas(part_code):
+    """Fetch and parse product listings from fiatpecas.com.br for a given part code."""
+    url = f"https://fiatpecas.com.br/search/?q={part_code}"
+    headers = {
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "none",
+        "upgrade-insecure-requests": "1",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"[FIATPECAS] Erro na requisição: {e}")
+        return []
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    items = soup.select(".js-item-product")
+    products = []
+
+    for item in items:
+        try:
+            # URL
+            link_tag = item.select_one("a[href]")
+            product_url = link_tag["href"] if link_tag else "#"
+
+            # Name
+            name_tag = item.select_one(".js-item-name")
+            name = name_tag.get_text(strip=True) if name_tag else ""
+
+            # Image (lazy-loaded via data-srcset)
+            img_tag = item.select_one("img.js-item-image")
+            image = ""
+            if img_tag:
+                srcset = img_tag.get("data-srcset", "") or img_tag.get("srcset", "") or img_tag.get("src", "")
+                if srcset:
+                    # Take first URL from srcset (format: "url 1x, url 2x" or just "url")
+                    image = srcset.split(",")[0].strip().split(" ")[0]
+
+            # Prices and installments from data-variants JSON
+            container = item.select_one(".js-product-container")
+            price_original = ""
+            price_pix = ""
+            installments = ""
+            available = True
+
+            if container:
+                variants_raw = container.get("data-variants", "[]")
+                try:
+                    variants = json.loads(variants_raw)
+                    if variants:
+                        v = variants[0]
+                        price_original = v.get("price_short", "")
+                        price_pix = v.get("price_with_payment_discount_short", "") or price_original
+                        available = bool(v.get("available", True))
+                        inst_raw = v.get("installments_data", "")
+                        if inst_raw:
+                            try:
+                                inst_data = json.loads(inst_raw)
+                                qty = inst_data.get("installments_count", "")
+                                val = inst_data.get("installment_value_short", "")
+                                if qty and val:
+                                    installments = f"{qty}x de {val}"
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+            products.append({
+                "name": name,
+                "url": product_url,
+                "image": image,
+                "price_original": price_original,
+                "price_pix": price_pix,
+                "installments": installments,
+                "available": available,
+            })
+        except Exception as e:
+            print(f"[FIATPECAS] Erro ao parsear produto: {e}")
+            continue
+
+    print(f"[FIATPECAS] {len(products)} produto(s) encontrado(s) para '{part_code}'")
+    return products
+
 
 def refresh_session_loop():
     """Background task to force login/cookie refresh every 25 mins to keep session valid forever."""
@@ -274,32 +566,42 @@ def refresh_session_loop():
 def index():
     part = ""
     vc = ""
+    name_query = ""
     result_text = None
     error_text = None
-    
+    products = []
+
     if request.method == "POST":
         part = request.form.get("part", "").strip()
         vc = request.form.get("vc", "").strip()
-        
-        if not part:
-            error_text = "O código da peça é obrigatório."
-        else:
+        name_query = request.form.get("name_query", "").strip()
+
+        if name_query and not part:
+            # Name-only search: only hits FiatPecas
+            print(f"WEB: Buscando por nome '{name_query}' no FiatPecas")
+            products = search_fiatpecas(name_query)
+        elif part:
             try:
                 chassis = vc if vc else None
                 print(f"WEB: Consultando peça {part}" + (f" para chassi {chassis}" if chassis else ""))
-                
+
                 # A função query_with_retry já lê os cookies, faz request e trata erros/re-login.
                 data = fiat_parts_tool.query_with_retry(part, chassis, headless=True)
-                
+
                 if data is None:
                     error_text = "A API não retornou dados ou a autenticação final falhou."
                 else:
                     result_text = fiat_parts_tool.format_applicability(data, part)
-                
+
             except Exception as e:
                 error_text = str(e)
 
-    return render_template_string(HTML_TEMPLATE, part=part, vc=vc, result=result_text, error=error_text)
+            # Always search FiatPecas by part code alongside ePER
+            products = search_fiatpecas(part)
+        else:
+            error_text = "Informe um código de peça ou um nome para buscar."
+
+    return render_template_string(HTML_TEMPLATE, part=part, vc=vc, name_query=name_query, result=result_text, error=error_text, products=products)
 
 if __name__ == "__main__":
     print("⚙️ Verificando cookies iniciais de acesso...")
