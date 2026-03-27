@@ -313,5 +313,5 @@ if __name__ == "__main__":
     bg_thread = threading.Thread(target=refresh_session_loop, daemon=True)
     bg_thread.start()
     
-    print("🚀 Servidor Web iniciado na porta 5000!")
-    app.run(host="0.0.0.0", port=5000)
+    print("🚀 Servidor Web iniciado na porta 5002!")
+    app.run(host="0.0.0.0", port=5002)
