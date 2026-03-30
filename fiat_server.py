@@ -461,23 +461,24 @@ HTML_TEMPLATE = """
 def search_fiatpecas(part_code):
     """Fetch and parse product listings from fiatpecas.com.br for a given part code."""
     url = f"https://fiatpecas.com.br/search/?q={part_code}"
-    headers = {
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "none",
-        "upgrade-insecure-requests": "1",
-    }
+    # Usando cloudscraper para contornar bloqueios de WAF (Cloudflare etc) em IPs de datacenter
+    import cloudscraper
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        }
+    )
+    
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
-        resp.raise_for_status()
+        resp = scraper.get(url, timeout=20)
+        # Se for 403 mesmo com scraper, não vai quebrar, só retorna lista vazia
+        if resp.status_code != 200:
+            print(f"[FIATPECAS] Resposta não-200: {resp.status_code}")
+            return []
     except Exception as e:
-        print(f"[FIATPECAS] Erro na requisição: {e}")
+        print(f"[FIATPECAS] Erro na requisição (Scraper): {e}")
         return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
