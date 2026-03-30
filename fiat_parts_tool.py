@@ -67,20 +67,31 @@ def login_and_get_cookies(headless: bool = True) -> dict:
 
         try:
             # Step 1: Navigate to site
-            page.goto(LOGIN_URL, timeout=60000)
+            page.goto(LOGIN_URL, timeout=60000, wait_until="networkidle")
             page.wait_for_timeout(5000)  # Wait for JS to load
             page.screenshot(path=str(DEBUG_DIR / "01_landing.png"))
 
-            # Close cookie banner if present
+            # Close cookie banner or generic modals if present
+            print("  → Verificando banners de cookies/popups...")
             try:
-                page.click("#onetrust-accept-btn-handler", timeout=3000)
-                page.wait_for_timeout(1000)
+                # Tenta o ID específico da Fiat ou seletores genéricos
+                cookie_selectors = ["#onetrust-accept-btn-handler", "button:has-text('Aceitar')", "button:has-text('Prosseguir')"]
+                for selector in cookie_selectors:
+                    try:
+                        btn = page.locator(selector).first
+                        if btn.is_visible(timeout=2000):
+                            btn.click()
+                            print(f"  ✓ Elemento {selector} fechado.")
+                            page.wait_for_timeout(1000)
+                    except Exception:
+                        continue
             except Exception:
                 pass
 
             # Step 2: Click "Entre ou Cadastre-se"
             print("  → Abrindo modal de login...")
-            page.click("a.login-link", timeout=10000)
+            page.wait_for_selector("a.login-link", timeout=20000)
+            page.click("a.login-link")
             page.wait_for_timeout(3000)
             page.screenshot(path=str(DEBUG_DIR / "02_modal_open.png"))
 
