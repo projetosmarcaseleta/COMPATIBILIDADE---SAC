@@ -91,8 +91,25 @@ def login_and_get_cookies(headless: bool = True) -> dict:
 
             # Step 2: Click "Entre ou Cadastre-se"
             print("  → Abrindo modal de login...")
-            page.wait_for_selector("a.login-link", timeout=20000)
-            page.click("a.login-link")
+            login_selectors = [
+                "a.login-link",
+                "a:has-text('Entre ou Cadastre-se')",
+                "button:has-text('Entre ou Cadastre-se')",
+                "[class*='login']",
+            ]
+            clicked_login = False
+            for sel in login_selectors:
+                try:
+                    page.wait_for_selector(sel, timeout=8000)
+                    page.click(sel)
+                    clicked_login = True
+                    print(f"  ✓ Botão de login clicado via seletor: {sel}")
+                    break
+                except Exception:
+                    continue
+            if not clicked_login:
+                page.screenshot(path=str(DEBUG_DIR / "02_login_not_found.png"))
+                raise Exception("Não foi possível encontrar o botão de login na página.")
             page.wait_for_timeout(3000)
             page.screenshot(path=str(DEBUG_DIR / "02_modal_open.png"))
 
