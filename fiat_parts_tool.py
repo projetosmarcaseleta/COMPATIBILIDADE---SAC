@@ -69,7 +69,7 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         try:
             # Step 1: Navigate to site
             page.goto(LOGIN_URL, timeout=60000, wait_until="networkidle")
-            page.wait_for_timeout(5000)  # Wait for JS to load
+            page.wait_for_timeout(10000)  # Wait for JS to fully render
             page.screenshot(path=str(DEBUG_DIR / "01_landing.png"))
 
             # Close cookie banner or generic modals if present
@@ -91,25 +91,34 @@ def login_and_get_cookies(headless: bool = True) -> dict:
 
             # Step 2: Click "Entre ou Cadastre-se"
             print("  → Abrindo modal de login...")
-            login_selectors = [
-                "a.login-link",
-                "a:has-text('Entre ou Cadastre-se')",
-                "button:has-text('Entre ou Cadastre-se')",
-                "[class*='login']",
-            ]
-            clicked_login = False
-            for sel in login_selectors:
-                try:
-                    page.wait_for_selector(sel, timeout=8000)
-                    page.click(sel)
-                    clicked_login = True
-                    print(f"  ✓ Botão de login clicado via seletor: {sel}")
-                    break
-                except Exception:
-                    continue
-            if not clicked_login:
+            # Tenta seletor combinado (OR) com timeout generoso para servidores lentos
+            login_locator = page.locator(
+                "a.login-link, "
+                "a:has-text('Entre ou Cadastre-se'), "
+                "button:has-text('Entre ou Cadastre-se'), "
+                "[class*='login-link'], "
+                "a[href*='login'], "
+                "a[aria-label*='Entrar' i], "
+                "a[aria-label*='login' i]"
+            )
+            try:
+                login_locator.first.wait_for(state="visible", timeout=25000)
+                login_locator.first.click()
+                print("  ✓ Botão de login clicado.")
+            except Exception:
                 page.screenshot(path=str(DEBUG_DIR / "02_login_not_found.png"))
-                raise Exception("Não foi possível encontrar o botão de login na página.")
+                # Último recurso: tenta clicar via JS em qualquer elemento com texto 'Entrar'
+                found = page.evaluate("""() => {
+                    const els = Array.from(document.querySelectorAll('a, button'));
+                    const target = els.find(e => e.textContent && (
+                        e.textContent.includes('Entre') || e.textContent.includes('Entrar') ||
+                        e.textContent.includes('login') || e.textContent.includes('Login')
+                    ));
+                    if (target) { target.click(); return true; }
+                    return false;
+                }""")
+                if not found:
+                    raise Exception("Não foi possível encontrar o botão de login na página.")
             page.wait_for_timeout(3000)
             page.screenshot(path=str(DEBUG_DIR / "02_modal_open.png"))
 
