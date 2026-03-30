@@ -40,7 +40,7 @@ HEADERS = {
     "user-agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/146.0.0.0 Safari/537.36"
+        "Chrome/133.0.0.0 Safari/537.36"
     ),
 }
 
@@ -56,7 +56,8 @@ def login_and_get_cookies(headless: bool = True) -> dict:
     DEBUG_DIR.mkdir(exist_ok=True)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless, channel="chrome")
+        # No VPS, deixamos o Playwright usar o Chromium nativo (sem force channel="chrome")
+        browser = p.chromium.launch(headless=headless)
         context = browser.new_context(
             user_agent=HEADERS["user-agent"],
             viewport={"width": 1280, "height": 900},
@@ -241,20 +242,28 @@ def login_and_get_cookies(headless: bool = True) -> dict:
             # Extract cookies from all domains
             all_cookies = context.cookies()
             cookies_dict = {c["name"]: c["value"] for c in all_cookies}
+            
+            # Log de depuração detalhado dos cookies para saber se chegamos ao domínio certo
+            domains = set(c["domain"] for c in all_cookies)
+            print(f"  → Domínios nos cookies: {list(domains)}")
 
             if ".AspNetCore.Cookies" not in cookies_dict:
-                print("  ⚠ Cookie de sessão não encontrado, aguardando mais...")
-                page.wait_for_timeout(5000)
+                print("  ⚠ Cookie de sessão eConnect não encontrado, aguardando redirecionamento final...")
+                eper_page.wait_for_timeout(10000)
                 all_cookies = context.cookies()
                 cookies_dict = {c["name"]: c["value"] for c in all_cookies}
 
             if ".AspNetCore.Cookies" not in cookies_dict:
-                print("  ❌ Falha no login - cookie de sessão não encontrado.")
-                print(f"     URL atual: {page.url}")
-                print(f"     Cookies obtidos: {list(cookies_dict.keys())}")
+                print("  ❌ Falha no login - cookie de sessão .AspNetCore.Cookies não encontrado.")
+                print(f"     URL final: {eper_page.url}")
+                print(f"     Cookies obtidos (nomes): {list(cookies_dict.keys())}")
+                
+                if eper_page.url == LOGIN_URL:
+                     print("  ⚠ Parece que não saímos da página inicial. O login pode ter sido bloqueado ou o clique não funcionou.")
+                
                 raise Exception("Falha no login - cookie de sessão não encontrado")
 
-            print(f"  ✅ Login bem-sucedido! ({len(cookies_dict)} cookies obtidos)")
+            print(f"  ✅ Login bem-sucedido! ({len(cookies_dict)} cookies de {len(domains)} domínios)")
             return cookies_dict
 
         finally:
