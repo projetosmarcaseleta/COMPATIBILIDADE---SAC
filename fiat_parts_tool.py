@@ -220,7 +220,7 @@ def login_and_get_cookies(headless: bool = True) -> dict:
                         new_page = context.wait_for_event('page', timeout=10000)
                         eper_page = new_page
                         print("  ✓ Nova aba do catálogo aberta")
-                    except Exception as e:
+                    except Exception:
                         print("  ⚠ Nenhuma nova aba detectada. Prosseguindo com a aba atual.")
                         eper_page = page
                 else:
@@ -228,38 +228,44 @@ def login_and_get_cookies(headless: bool = True) -> dict:
                     
             except Exception as e:
                 print(f"  ⚠ Falha ao abrir catálogo por clique: {e}")
-                # Fallback: maybe it loaded in the same tab, or we need to navigate manually
-                try:
-                    page.goto(EPER_URL, timeout=60000)
-                except Exception:
-                    pass
                 eper_page = page
             
-            print("  → Aguardando redirecionamentos do ePER...")
-            eper_page.wait_for_timeout(15000)
-            eper_page.screenshot(path=str(DEBUG_DIR / "09_eper_page.png"))
-
-            # Extract cookies from all domains
-            all_cookies = context.cookies()
-            cookies_dict = {c["name"]: c["value"] for c in all_cookies}
+            print("  → Aguardando redirecionamentos e cookies do ePER...")
             
-            # Log de depuração detalhado dos cookies para saber se chegamos ao domínio certo
-            domains = set(c["domain"] for c in all_cookies)
-            print(f"  → Domínios nos cookies: {list(domains)}")
-
-            if ".AspNetCore.Cookies" not in cookies_dict:
-                print("  ⚠ Cookie de sessão eConnect não encontrado, aguardando redirecionamento final...")
-                eper_page.wait_for_timeout(10000)
+            # Tenta esperar especificamente pelo domínio do ePER nos cookies
+            start_time = time.time()
+            found_cookie = False
+            while time.time() - start_time < 45:  # Espera até 45 segundos no VPS
                 all_cookies = context.cookies()
                 cookies_dict = {c["name"]: c["value"] for c in all_cookies}
+                if ".AspNetCore.Cookies" in cookies_dict:
+                    found_cookie = True
+                    break
+                
+                # Se ainda não achou, e estivermos parado na home, tenta navegar direto
+                if time.time() - start_time > 20 and (eper_page.url == LOGIN_URL or eper_page.url == "about:blank"):
+                    print("  ⚠ URL não mudou adequadamente. Tentando navegação direta para o ePER...")
+                    try:
+                        eper_page.goto(EPER_URL, timeout=30000)
+                    except Exception:
+                        pass
+                
+                eper_page.wait_for_timeout(3000)
 
-            if ".AspNetCore.Cookies" not in cookies_dict:
+            all_cookies = context.cookies()
+            cookies_dict = {c["name"]: c["value"] for c in all_cookies}
+            domains = set(c["domain"] for c in all_cookies)
+            
+            print(f"  → Domínios nos cookies: {list(domains)}")
+
+            if not found_cookie:
                 print("  ❌ Falha no login - cookie de sessão .AspNetCore.Cookies não encontrado.")
-                print(f"     URL final: {eper_page.url}")
+                print(f"     URL da aba ePER: {eper_page.url}")
+                print(f"     Páginas abertas no contexto: {[p.url for p in context.pages]}")
                 print(f"     Cookies obtidos (nomes): {list(cookies_dict.keys())}")
                 
                 if eper_page.url == LOGIN_URL:
-                     print("  ⚠ Parece que não saímos da página inicial. O login pode ter sido bloqueado ou o clique não funcionou.")
+                     print("  ⚠ O navegador não saiu da página inicial. Provavelmente o clique no catálogo foi bloqueado.")
                 
                 raise Exception("Falha no login - cookie de sessão não encontrado")
 
