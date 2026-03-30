@@ -556,17 +556,18 @@ def search_fiatpecas(part_code):
 
 
 def refresh_session_loop():
-    """Background task to force login/cookie refresh every 25 mins to keep session valid forever."""
+    """Verifica cookies a cada hora. Não tenta login (IP do servidor é bloqueado pela Stellantis).
+    Os cookies devem ser sincronizados da máquina local via sync_cookies.py."""
     while True:
+        time.sleep(60 * 60)  # verifica a cada 1 hora
         try:
-            print("[BACKGROUND] Iniciando renovação da sessão (25 min passados)...")
-            fiat_parts_tool.get_cookies(force_login=True, headless=True)
-            print("[BACKGROUND] ✅ Sessão renovada com sucesso!")
+            cookies = fiat_parts_tool.load_cookies()
+            if cookies:
+                print("[BACKGROUND] ✅ Cookies em cache ainda válidos.")
+            else:
+                print("[BACKGROUND] ⚠️ Cookies expirados. Execute sync_cookies.py na máquina local para renovar.")
         except Exception as e:
-            print(f"[BACKGROUND] ❌ Erro ao renovar sessão no background: {e}")
-        
-        # Aguarda 25 minutos para renovar de novo (cookie dura 30m na API)
-        time.sleep(25 * 60)
+            print(f"[BACKGROUND] ❌ Erro ao verificar cookies: {e}")
 
 @app.route("/", methods=["GET", "POST"])
 def index():

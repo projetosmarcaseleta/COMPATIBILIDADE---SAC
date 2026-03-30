@@ -57,7 +57,13 @@ def login_and_get_cookies(headless: bool = True) -> dict:
 
     with sync_playwright() as p:
         # No VPS, deixamos o Playwright usar o Chromium nativo (sem force channel="chrome")
-        browser = p.chromium.launch(headless=headless)
+        import os
+        proxy_server = os.environ.get("SOCKS_PROXY", "")
+        launch_args = {"headless": headless}
+        if proxy_server:
+            launch_args["proxy"] = {"server": proxy_server}
+            print(f"  🌐 Usando proxy: {proxy_server}")
+        browser = p.chromium.launch(**launch_args)
         context = browser.new_context(
             user_agent=HEADERS["user-agent"],
             viewport={"width": 1280, "height": 900},
@@ -326,15 +332,18 @@ def save_cookies(cookies: dict):
         pickle.dump({"cookies": cookies, "time": time.time()}, f)
 
 
+COOKIE_TTL_MINUTES = 480  # 8 horas — servidor usa cookies sincronizados da máquina local
+
+
 def load_cookies() -> dict | None:
-    """Load cached cookies if they exist and are less than 30 min old."""
+    """Load cached cookies if they exist and are less than COOKIE_TTL_MINUTES old."""
     if not COOKIES_FILE.exists():
         return None
     try:
         with open(COOKIES_FILE, "rb") as f:
             data = pickle.load(f)
         age_minutes = (time.time() - data["time"]) / 60
-        if age_minutes > 30:
+        if age_minutes > COOKIE_TTL_MINUTES:
             print(f"⏰ Cookies em cache expiraram ({age_minutes:.0f} min). Novo login necessário.")
             return None
         print(f"♻️  Reutilizando cookies em cache ({age_minutes:.0f} min de idade)")
