@@ -118,6 +118,11 @@ def login_and_get_cookies(headless: bool = True) -> dict:
                     return false;
                 }""")
                 if not found:
+                    # Diagnóstico: imprime URL e título para entender o que o servidor vê
+                    print(f"  ❌ URL atual: {page.url}")
+                    print(f"  ❌ Título: {page.title()}")
+                    page_text = page.evaluate("() => document.body ? document.body.innerText.slice(0, 500) : 'sem body'")
+                    print(f"  ❌ Conteúdo da página: {page_text}")
                     raise Exception("Não foi possível encontrar o botão de login na página.")
             page.wait_for_timeout(3000)
             page.screenshot(path=str(DEBUG_DIR / "02_modal_open.png"))
