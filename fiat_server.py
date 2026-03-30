@@ -454,6 +454,11 @@ HTML_TEMPLATE = """
 
     </div>
 
+    <!-- Footer com Versão -->
+    <div style="text-align: center; padding: 20px; color: #888; font-size: 0.7rem; margin-top: 40px; border-top: 1px solid #ddd;">
+        Versão: 1.0.4 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 30/03/2026 10:15
+    </div>
+
 </body>
 </html>
 """
