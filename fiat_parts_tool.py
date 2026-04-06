@@ -67,12 +67,27 @@ def login_and_get_cookies(headless: bool = True) -> dict:
     import platform
     is_linux = platform.system() == "Linux"
     
+    # Em servidores Linux (como o VPS da Hostinger), o modo headless costuma
+    # ser detectado pelo Akamai ou causar crash (Stacktrace #0...)
+    # Para resolver, usamos o Xvfb (Virtual Display) para simular uma tela real
+    # e rodamos o Chrome no modo COM interface gráfica (headless=False)
+    display = None
+    if is_linux:
+        try:
+            from pyvirtualdisplay import Display
+            print("  💻 Iniciando Xvfb Virtual Display...")
+            # Usa o Xvfb instalado via apt-get no deploy.yml
+            display = Display(visible=0, size=(1280, 900))
+            display.start()
+            headless = False # Força modo não-headless já que temos a tela virtual
+        except ImportError:
+            print("  ⚠️ pyvirtualdisplay não instalado. Prosseguindo sem tela virtual.")
+    
     # SeleniumBase Driver com uc=True ativa o modo anti-detecção
-    # headless2=True usa o novo modo headless (--headless=new) que é mais estável
     driver = Driver(
         uc=True,
-        headless2=headless,
-        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu",
+        headless=headless,
+        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu,--disable-software-rasterizer"
     )
     driver.set_page_load_timeout(60)
 
@@ -315,7 +330,16 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         return cookies_dict
 
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except:
+            pass
+        if 'display' in locals() and display:
+            print("  💻 Encerrando Xvfb Virtual Display...")
+            try:
+                display.stop()
+            except:
+                pass
 
 
 # ── Cookie Cache ───────────────────────────────────────────────────────────────
