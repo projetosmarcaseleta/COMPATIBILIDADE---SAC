@@ -96,9 +96,9 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         print("  → Abrindo modal de login...")
         try:
             login_link = WebDriverWait(driver, 20).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "a.login-link"))
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a.login-link"))
             )
-            login_link.click()
+            driver.execute_script("arguments[0].click()", login_link)
             print("  ✓ Botão de login clicado.")
         except Exception:
             driver.save_screenshot(str(DEBUG_DIR / "02_login_not_found.png"))
@@ -124,9 +124,9 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         # Step 3: Click "ENTRAR COM E-MAIL"
         print("  → Selecionando login por e-mail...")
         email_btn = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.btn-email"))
+            EC.presence_of_element_located((By.CSS_SELECTOR, "a.btn-email"))
         )
-        email_btn.click()
+        driver.execute_script("arguments[0].click()", email_btn)
         time.sleep(2)
         driver.save_screenshot(str(DEBUG_DIR / "03_email_form.png"))
 
@@ -147,7 +147,7 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         continuar_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
         for btn in continuar_btns:
             if btn.is_displayed():
-                btn.click()
+                driver.execute_script("arguments[0].click()", btn)
                 break
         print("  ✓ CONTINUAR clicado")
 
@@ -182,7 +182,7 @@ def login_and_get_cookies(headless: bool = True) -> dict:
                 retry_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
                 for btn in retry_btns:
                     if btn.is_displayed():
-                        btn.click()
+                        driver.execute_script("arguments[0].click()", btn)
                         break
                 print("  ✓ CONTINUAR clicado (2a tentativa)")
                 time.sleep(8)
@@ -195,7 +195,7 @@ def login_and_get_cookies(headless: bool = True) -> dict:
             )
 
         print("  → Digitando senha...")
-        password_input.click()
+        driver.execute_script("arguments[0].click()", password_input)
         time.sleep(0.3)
         password_input.clear()
         password_input.send_keys(PASSWORD)
@@ -207,7 +207,7 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         continuar_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
         for btn in continuar_btns:
             if btn.is_displayed():
-                btn.click()
+                driver.execute_script("arguments[0].click()", btn)
                 break
         print("  → Aguardando autenticação...")
         time.sleep(10)
