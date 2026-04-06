@@ -18,12 +18,13 @@ from pathlib import Path
 
 import requests
 try:
-    from playwright_extra import sync_playwright
-    from playwright_extra.stealth import stealth_sync  # noqa: F401
-    _STEALTH = True
+    from seleniumbase import Driver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    _HAS_UC = True
 except ImportError:
-    from playwright.sync_api import sync_playwright
-    _STEALTH = False
+    _HAS_UC = False
 
 
 # ── Configuration ──────────────────────────────────────────────────────────────
@@ -50,283 +51,263 @@ HEADERS = {
 }
 
 
-# ── Browser Login (Playwright) ─────────────────────────────────────────────────
+# ── Browser Login (SeleniumBase UC Mode) ───────────────────────────────────────
 
 def login_and_get_cookies(headless: bool = True) -> dict:
     """
-    Perform browser login using Playwright and return session cookies.
-    Playwright uses native browser input events that work with modern JS frameworks.
+    Perform browser login using SeleniumBase UC mode to bypass Akamai WAF.
+    Returns a dict of session cookies.
     """
-    print("🔑 Iniciando login no Fiat Reparador...")
+    if not _HAS_UC:
+        raise ImportError("seleniumbase não instalado. Rode: pip install seleniumbase")
+
+    print("🔑 Iniciando login no Fiat Reparador (SeleniumBase UC)...")
     DEBUG_DIR.mkdir(exist_ok=True)
 
-    with sync_playwright() as p:
-        # No VPS, deixamos o Playwright usar o Chromium nativo (sem force channel="chrome")
-        import os
-        proxy_server = os.environ.get("SOCKS_PROXY", "")
-        launch_args = {"headless": headless}
-        if proxy_server:
-            launch_args["proxy"] = {"server": proxy_server}
-            print(f"  🌐 Usando proxy: {proxy_server}")
-        browser = p.chromium.launch(**launch_args)
-        context = browser.new_context(
-            user_agent=HEADERS["user-agent"],
-            viewport={"width": 1280, "height": 900},
-            locale="pt-BR",
-        )
-        page = context.new_page()
-        page.set_default_timeout(30000)
+    # SeleniumBase Driver com uc=True ativa o modo anti-detecção
+    driver = Driver(uc=True, headless=headless)
+    driver.set_page_load_timeout(60)
 
-        try:
-            # Step 1: Navigate to site
-            page.goto(LOGIN_URL, timeout=60000, wait_until="networkidle")
-            page.wait_for_timeout(10000)  # Wait for JS to fully render
-            page.screenshot(path=str(DEBUG_DIR / "01_landing.png"))
+    try:
+        # Step 1: Navigate to site
+        driver.get(LOGIN_URL)
+        time.sleep(8)  # Espera JS carregar completamente
+        driver.save_screenshot(str(DEBUG_DIR / "01_landing.png"))
 
-            # Close cookie banner or generic modals if present
-            print("  → Verificando banners de cookies/popups...")
+        # Close cookie banner if present
+        print("  → Verificando banners de cookies/popups...")
+        for selector in ["#onetrust-accept-btn-handler", "button[aria-label='Aceitar']"]:
             try:
-                # Tenta o ID específico da Fiat ou seletores genéricos
-                cookie_selectors = ["#onetrust-accept-btn-handler", "button:has-text('Aceitar')", "button:has-text('Prosseguir')"]
-                for selector in cookie_selectors:
-                    try:
-                        btn = page.locator(selector).first
-                        if btn.is_visible(timeout=2000):
-                            btn.click()
-                            print(f"  ✓ Elemento {selector} fechado.")
-                            page.wait_for_timeout(1000)
-                    except Exception:
-                        continue
+                btn = WebDriverWait(driver, 3).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                )
+                btn.click()
+                print(f"  ✓ Banner fechado ({selector})")
+                time.sleep(1)
+            except Exception:
+                continue
+
+        # Step 2: Click "Entre ou Cadastre-se"
+        print("  → Abrindo modal de login...")
+        try:
+            login_link = WebDriverWait(driver, 20).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "a.login-link"))
+            )
+            login_link.click()
+            print("  ✓ Botão de login clicado.")
+        except Exception:
+            driver.save_screenshot(str(DEBUG_DIR / "02_login_not_found.png"))
+            # Fallback: tenta clicar via JS
+            found = driver.execute_script("""
+                const els = Array.from(document.querySelectorAll('a, button'));
+                const target = els.find(e => e.textContent && (
+                    e.textContent.includes('Entre') || e.textContent.includes('Entrar')
+                ));
+                if (target) { target.click(); return true; }
+                return false;
+            """)
+            if not found:
+                print(f"  ❌ URL atual: {driver.current_url}")
+                print(f"  ❌ Título: {driver.title}")
+                body_text = driver.execute_script("return document.body ? document.body.innerText.slice(0, 500) : 'sem body'")
+                print(f"  ❌ Conteúdo: {body_text}")
+                raise Exception("Não foi possível encontrar o botão de login na página.")
+
+        time.sleep(3)
+        driver.save_screenshot(str(DEBUG_DIR / "02_modal_open.png"))
+
+        # Step 3: Click "ENTRAR COM E-MAIL"
+        print("  → Selecionando login por e-mail...")
+        email_btn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.btn-email"))
+        )
+        email_btn.click()
+        time.sleep(2)
+        driver.save_screenshot(str(DEBUG_DIR / "03_email_form.png"))
+
+        # Step 4: Enter email
+        print(f"  → Digitando e-mail: {EMAIL}")
+        email_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input.hub-input-field"))
+        )
+        email_input.click()
+        time.sleep(0.3)
+        email_input.clear()
+        email_input.send_keys(EMAIL)
+        time.sleep(2)
+        driver.save_screenshot(str(DEBUG_DIR / "04_email_typed.png"))
+
+        # Click CONTINUAR (email step)
+        print("  → Clicando CONTINUAR...")
+        continuar_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
+        for btn in continuar_btns:
+            if btn.is_displayed():
+                btn.click()
+                break
+        print("  ✓ CONTINUAR clicado")
+
+        # Wait for password screen
+        print("  → Aguardando tela de senha...")
+        time.sleep(5)
+        driver.save_screenshot(str(DEBUG_DIR / "05_after_continuar.png"))
+
+        # Step 5: Enter password
+        try:
+            password_input = WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.ID, "password"))
+            )
+        except Exception:
+            print("  ⚠ Tela de senha não apareceu. Tentando novamente...")
+            driver.save_screenshot(str(DEBUG_DIR / "05b_retry.png"))
+            # Close any survey popups
+            try:
+                driver.find_element(By.XPATH, "//button[contains(text(), 'Cancelar')]").click()
+                time.sleep(0.5)
+            except Exception:
+                pass
+            # Re-type email and click CONTINUAR again
+            try:
+                email_field = driver.find_element(By.CSS_SELECTOR, "input.hub-input-field")
+                email_field.click()
+                email_field.clear()
+                for char in EMAIL:
+                    email_field.send_keys(char)
+                    time.sleep(0.05)
+                time.sleep(2)
+                retry_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
+                for btn in retry_btns:
+                    if btn.is_displayed():
+                        btn.click()
+                        break
+                print("  ✓ CONTINUAR clicado (2a tentativa)")
+                time.sleep(8)
+                driver.save_screenshot(str(DEBUG_DIR / "05c_after_retry.png"))
+            except Exception as e:
+                print(f"  ⚠ Retry falhou: {e}")
+
+            password_input = WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.ID, "password"))
+            )
+
+        print("  → Digitando senha...")
+        password_input.click()
+        time.sleep(0.3)
+        password_input.clear()
+        password_input.send_keys(PASSWORD)
+        time.sleep(1)
+        driver.save_screenshot(str(DEBUG_DIR / "06_password_typed.png"))
+
+        # Click CONTINUAR (password step)
+        print("  → Clicando CONTINUAR...")
+        continuar_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
+        for btn in continuar_btns:
+            if btn.is_displayed():
+                btn.click()
+                break
+        print("  → Aguardando autenticação...")
+        time.sleep(10)
+        driver.save_screenshot(str(DEBUG_DIR / "07_after_login.png"))
+
+        # Verify login success
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a.badge-logout-button"))
+            )
+            print("  ✅ Login confirmado!")
+        except Exception:
+            print("  ⚠ Não foi possível confirmar o login, tentando continuar...")
+            driver.save_screenshot(str(DEBUG_DIR / "08_login_not_confirmed.png"))
+
+        # Step 6: Navigate to ePER to get the right domain cookies
+        print("  → Acessando o Catálogo de Peças...")
+        try:
+            # Close any bottom banner
+            try:
+                driver.find_element(By.XPATH, "//button[contains(text(), 'FECHAR')]").click()
+                time.sleep(1)
             except Exception:
                 pass
 
-            # Step 2: Click "Entre ou Cadastre-se"
-            print("  → Abrindo modal de login...")
-            # Tenta seletor combinado (OR) com timeout generoso para servidores lentos
-            login_locator = page.locator(
-                "a.login-link, "
-                "a:has-text('Entre ou Cadastre-se'), "
-                "button:has-text('Entre ou Cadastre-se'), "
-                "[class*='login-link'], "
-                "a[href*='login'], "
-                "a[aria-label*='Entrar' i], "
-                "a[aria-label*='login' i]"
-            )
-            try:
-                login_locator.first.wait_for(state="visible", timeout=25000)
-                login_locator.first.click()
-                print("  ✓ Botão de login clicado.")
-            except Exception:
-                page.screenshot(path=str(DEBUG_DIR / "02_login_not_found.png"))
-                # Último recurso: tenta clicar via JS em qualquer elemento com texto 'Entrar'
-                found = page.evaluate("""() => {
-                    const els = Array.from(document.querySelectorAll('a, button'));
-                    const target = els.find(e => e.textContent && (
-                        e.textContent.includes('Entre') || e.textContent.includes('Entrar') ||
-                        e.textContent.includes('login') || e.textContent.includes('Login')
-                    ));
-                    if (target) { target.click(); return true; }
-                    return false;
-                }""")
-                if not found:
-                    # Diagnóstico: imprime URL e título para entender o que o servidor vê
-                    print(f"  ❌ URL atual: {page.url}")
-                    print(f"  ❌ Título: {page.title()}")
-                    page_text = page.evaluate("() => document.body ? document.body.innerText.slice(0, 500) : 'sem body'")
-                    print(f"  ❌ Conteúdo da página: {page_text}")
-                    raise Exception("Não foi possível encontrar o botão de login na página.")
-            page.wait_for_timeout(3000)
-            page.screenshot(path=str(DEBUG_DIR / "02_modal_open.png"))
+            # Scroll down to make catalog visible
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2)")
+            time.sleep(1)
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+            time.sleep(2)
 
-            # Step 3: Click "ENTRAR COM E-MAIL"
-            print("  → Selecionando login por e-mail...")
-            page.click("a.btn-email", timeout=10000)
-            page.wait_for_timeout(2000)
-            page.screenshot(path=str(DEBUG_DIR / "03_email_form.png"))
-
-            # Step 4: Enter email
-            print(f"  → Digitando e-mail: {EMAIL}")
-            email_input = page.wait_for_selector("input.hub-input-field", timeout=10000)
-            email_input.click()
-            page.wait_for_timeout(300)
-            # Type slowly to trigger input events properly
-            email_input.fill(EMAIL)
-            page.wait_for_timeout(2000)
-            page.screenshot(path=str(DEBUG_DIR / "04_email_typed.png"))
-
-            # Click CONTINUAR (email step)
-            # There are 3 a.hub-button elements — target the visible one with text
-            print("  → Clicando CONTINUAR...")
-            page.locator("a.hub-button", has_text="CONTINUAR").first.click(timeout=10000)
-            print("  ✓ CONTINUAR clicado")
-
-            # Wait for password screen
-            print("  → Aguardando tela de senha...")
-            page.wait_for_timeout(5000)
-            page.screenshot(path=str(DEBUG_DIR / "05_after_continuar.png"))
-
-            # Step 5: Enter password
-            try:
-                password_input = page.wait_for_selector("input#password", timeout=20000)
-            except Exception:
-                # If password field didn't appear, try clicking CONTINUAR again
-                print("  ⚠ Tela de senha não apareceu. Tentando novamente...")
-                page.screenshot(path=str(DEBUG_DIR / "05b_retry.png"))
-                
-                # Try closing any survey popups
-                try:
-                    page.click("button:text('Cancelar')", timeout=2000)
-                    page.wait_for_timeout(500)
-                except Exception:
-                    pass
-                
-                # Clear and re-type email, then click CONTINUAR again
-                try:
-                    email_field = page.query_selector("input.hub-input-field")
-                    if email_field:
-                        email_field.click()
-                        email_field.fill("")
-                        page.wait_for_timeout(500)
-                        email_field.type(EMAIL, delay=50)  # Type character by character
-                        page.wait_for_timeout(2000)
-                        page.locator("a.hub-button", has_text="CONTINUAR").first.click(timeout=5000)
-                        print("  ✓ CONTINUAR clicado (2a tentativa)")
-                        page.wait_for_timeout(8000)
-                        page.screenshot(path=str(DEBUG_DIR / "05c_after_retry.png"))
-                except Exception as e:
-                    print(f"  ⚠ Retry falhou: {e}")
-                
-                password_input = page.wait_for_selector("input#password", timeout=20000)
-            
-            print("  → Digitando senha...")
-            password_input.click()
-            page.wait_for_timeout(300)
-            password_input.fill(PASSWORD)
-            page.wait_for_timeout(1000)
-            page.screenshot(path=str(DEBUG_DIR / "06_password_typed.png"))
-
-            # Click CONTINUAR (password step)
-            print("  → Clicando CONTINUAR...")
-            page.locator("a.hub-button", has_text="CONTINUAR").first.click(timeout=10000)
-            print("  → Aguardando autenticação...")
-            page.wait_for_timeout(10000)
-            page.screenshot(path=str(DEBUG_DIR / "07_after_login.png"))
-
-            # Verify login success
-            try:
-                page.wait_for_selector("a.badge-logout-button", timeout=10000)
-                print("  ✅ Login confirmado!")
-            except Exception:
-                print("  ⚠ Não foi possível confirmar o login, tentando continuar...")
-                page.screenshot(path=str(DEBUG_DIR / "08_login_not_confirmed.png"))
-
-            # Step 6: Navigate to ePER to get the right domain cookies
-            print("  → Acessando o Catálogo de Peças...")
-            try:
-                # Close the new bottom cookie banner
-                try:
-                    page.locator("text='FECHAR'").first.click(timeout=3000)
-                except Exception:
-                    pass
-                
-                # Scroll down so the catalog card elements become visible
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight/2)")
-                page.wait_for_timeout(1000)
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                page.wait_for_timeout(2000)
-                
-                # Use robust JS to click the catalog link
-                clicked = page.evaluate("""() => {
-                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-                    let node;
-                    while (node = walker.nextNode()) {
-                        if (node.nodeValue.includes('agilizar o tempo')) {
-                            let el = node.parentElement;
-                            
-                            // Highlight the element for debugging
-                            el.style.border = '5px solid red';
-                            el.style.backgroundColor = 'yellow';
-                            
-                            while (el && el !== document.body) {
-                                if (el.tagName === 'A' || el.tagName === 'BUTTON') {
-                                    el.style.border = '5px solid blue';
-                                    window.elementToClick = el;
-                                    return true;
-                                }
-                                el = el.parentElement;
+            # Click catalog via JS
+            clicked = driver.execute_script("""
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+                let node;
+                while (node = walker.nextNode()) {
+                    if (node.nodeValue.includes('agilizar o tempo')) {
+                        let el = node.parentElement;
+                        while (el && el !== document.body) {
+                            if (el.tagName === 'A' || el.tagName === 'BUTTON') {
+                                el.click();
+                                return true;
                             }
-                            window.elementToClick = node.parentElement;
-                            return true;
+                            el = el.parentElement;
                         }
+                        node.parentElement.click();
+                        return true;
                     }
-                    return false;
-                }""")
-                
-                if clicked:
-                    page.screenshot(path=str(DEBUG_DIR / "08b_found_card.png"))
-                    
-                    # Now click it
-                    page.evaluate("if(window.elementToClick) window.elementToClick.click();")
-                    print("  ✓ CATÁLOGO DE PEÇAS clicado via JS")
-                    # Wait for the new tab to open
-                    try:
-                        new_page = context.wait_for_event('page', timeout=10000)
-                        eper_page = new_page
-                        print("  ✓ Nova aba do catálogo aberta")
-                    except Exception:
-                        print("  ⚠ Nenhuma nova aba detectada. Prosseguindo com a aba atual.")
-                        eper_page = page
-                else:
-                    raise Exception("Texto 'agilizar o tempo' não encontrado na página via JS!")
-                    
-            except Exception as e:
-                print(f"  ⚠ Falha ao abrir catálogo por clique: {e}")
-                eper_page = page
-            
-            print("  → Aguardando redirecionamentos e cookies do ePER...")
-            
-            # Tenta esperar especificamente pelo domínio do ePER nos cookies
-            start_time = time.time()
-            found_cookie = False
-            while time.time() - start_time < 45:  # Espera até 45 segundos no VPS
-                all_cookies = context.cookies()
-                cookies_dict = {c["name"]: c["value"] for c in all_cookies}
-                if ".AspNetCore.Cookies" in cookies_dict:
-                    found_cookie = True
-                    break
-                
-                # Se ainda não achou, e estivermos parado na home, tenta navegar direto
-                if time.time() - start_time > 20 and (eper_page.url == LOGIN_URL or eper_page.url == "about:blank"):
-                    print("  ⚠ URL não mudou adequadamente. Tentando navegação direta para o ePER...")
-                    try:
-                        eper_page.goto(EPER_URL, timeout=30000)
-                    except Exception:
-                        pass
-                
-                eper_page.wait_for_timeout(3000)
+                }
+                return false;
+            """)
 
-            all_cookies = context.cookies()
-            cookies_dict = {c["name"]: c["value"] for c in all_cookies}
-            domains = set(c["domain"] for c in all_cookies)
-            
-            print(f"  → Domínios nos cookies: {list(domains)}")
+            if clicked:
+                print("  ✓ CATÁLOGO DE PEÇAS clicado via JS")
+                time.sleep(5)
+                # If new tab opened, switch to it
+                if len(driver.window_handles) > 1:
+                    driver.switch_to.window(driver.window_handles[-1])
+                    print("  ✓ Nova aba do catálogo aberta")
+                    time.sleep(5)
+            else:
+                print("  ⚠ Texto 'agilizar o tempo' não encontrado. Tentando navegar direto ao ePER...")
+                driver.get(EPER_URL)
+                time.sleep(10)
 
-            if not found_cookie:
-                print("  ❌ Falha no login - cookie de sessão .AspNetCore.Cookies não encontrado.")
-                print(f"     URL da aba ePER: {eper_page.url}")
-                print(f"     Páginas abertas no contexto: {[p.url for p in context.pages]}")
-                print(f"     Cookies obtidos (nomes): {list(cookies_dict.keys())}")
-                
-                if eper_page.url == LOGIN_URL:
-                     print("  ⚠ O navegador não saiu da página inicial. Provavelmente o clique no catálogo foi bloqueado.")
-                
+        except Exception as e:
+            print(f"  ⚠ Falha ao abrir catálogo: {e}. Tentando navegar direto ao ePER...")
+            driver.get(EPER_URL)
+            time.sleep(10)
+
+        # Collect cookies
+        print("  → Aguardando cookies do ePER...")
+        start_time = time.time()
+        found_cookie = False
+        while time.time() - start_time < 30:
+            selenium_cookies = driver.get_cookies()
+            cookies_dict = {c["name"]: c["value"] for c in selenium_cookies}
+            if ".AspNetCore.Cookies" in cookies_dict:
+                found_cookie = True
+                break
+            time.sleep(3)
+
+        selenium_cookies = driver.get_cookies()
+        cookies_dict = {c["name"]: c["value"] for c in selenium_cookies}
+        domains = set(c.get("domain", "") for c in selenium_cookies)
+        print(f"  → Domínios nos cookies: {list(domains)}")
+
+        if not found_cookie:
+            # Última tentativa: navegar diretamente ao ePER
+            print("  ⚠ Cookie não encontrado. Navegação direta ao ePER...")
+            driver.get(EPER_URL)
+            time.sleep(10)
+            selenium_cookies = driver.get_cookies()
+            cookies_dict = {c["name"]: c["value"] for c in selenium_cookies}
+            if ".AspNetCore.Cookies" not in cookies_dict:
+                print(f"  ❌ Falha no login - cookie .AspNetCore.Cookies não encontrado.")
+                print(f"     URL atual: {driver.current_url}")
+                print(f"     Cookies: {list(cookies_dict.keys())}")
                 raise Exception("Falha no login - cookie de sessão não encontrado")
 
-            print(f"  ✅ Login bem-sucedido! ({len(cookies_dict)} cookies de {len(domains)} domínios)")
-            return cookies_dict
+        print(f"  ✅ Login bem-sucedido! ({len(cookies_dict)} cookies obtidos)")
+        return cookies_dict
 
-        finally:
-            browser.close()
+    finally:
+        driver.quit()
 
 
 # ── Cookie Cache ───────────────────────────────────────────────────────────────
