@@ -3,7 +3,7 @@ import threading
 import json
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, redirect, url_for
 import fiat_parts_tool
 
 app = Flask(__name__)
@@ -313,11 +313,20 @@ HTML_TEMPLATE = """
     </div>
 
     <!-- Subheader -->
-    <div class="eper-subheader">
-        <div class="eper-btn-back">
-            <i class="bi bi-chevron-left"></i>
+    <div class="eper-subheader d-flex justify-content-between align-items-center">
+        <div>
+            <div class="eper-btn-back d-inline-block">
+                <i class="bi bi-chevron-left"></i>
+            </div>
+            <span><i class="bi bi-car-front"></i> &raquo; BUSCA PARTE POR CÓDIGO</span>
         </div>
-        <span><i class="bi bi-car-front"></i> &raquo; BUSCA PARTE POR CÓDIGO</span>
+        <div style="padding-right: 15px;">
+            <form action="/refresh" method="POST" style="margin: 0;">
+                <button type="submit" class="btn btn-sm btn-outline-secondary" style="font-size: 0.8rem; padding: 2px 8px;">
+                    <i class="bi bi-arrow-clockwise"></i> Renovar Sessão
+                </button>
+            </form>
+        </div>
     </div>
 
     <div class="container-fluid px-4">
@@ -345,6 +354,16 @@ HTML_TEMPLATE = """
                 </div>
             </form>
         </div>
+
+        {% if request.args.get('refreshed') == 'success' %}
+        <div class="alert alert-success mx-auto mt-3" style="max-width: 900px;" role="alert">
+            <i class="bi bi-check-circle-fill me-2"></i> Sessão renovada com sucesso!
+        </div>
+        {% elif request.args.get('refreshed') == 'error' %}
+        <div class="alert alert-danger mx-auto mt-3" style="max-width: 900px;" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> Falha ao renovar: {{ request.args.get('errmsg') }}
+        </div>
+        {% endif %}
 
         {% if error %}
         <div class="alert alert-danger mx-auto" style="max-width: 900px;" role="alert">
@@ -576,6 +595,17 @@ def refresh_session_loop():
             print("[BACKGROUND] ✅ Cookies renovados com sucesso!")
         except Exception as e:
             print(f"[BACKGROUND] ❌ Erro ao renovar cookies: {e}")
+
+@app.route("/refresh", methods=["POST"])
+def refresh():
+    try:
+        print("[WEB] Renovação manual de sessão solicitada...")
+        fiat_parts_tool.get_cookies(force_login=True, headless=True)
+        # We pass a success flag in the URL parameter via redirect
+        return redirect(url_for('index', refreshed='success'))
+    except Exception as e:
+        print(f"[WEB] ❌ Falha na renovação manual: {e}")
+        return redirect(url_for('index', refreshed='error', errmsg=str(e)[:100]))
 
 @app.route("/", methods=["GET", "POST"])
 def index():
