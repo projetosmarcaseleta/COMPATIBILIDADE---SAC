@@ -307,27 +307,17 @@ HTML_TEMPLATE = """
 
     <!-- Header -->
     <div class="eper-navbar">
-        <div class="eper-logo" style="background: #f8f9fa; padding: 5px 14px; border-radius: 4px; display: flex; align-items: center; margin-bottom: 8px;">
-            <i class="bi bi-gem" style="color: #1a56db; font-size: 1.35rem; margin-right: 7px;"></i>
-            <span style="font-family: Arial, sans-serif; font-size: 1.25rem; letter-spacing: -0.5px; text-transform: lowercase; color: #1a1a2e;">marca</span><span style="font-family: Arial, sans-serif; font-size: 1.25rem; font-weight: 900; letter-spacing: -0.5px; text-transform: lowercase; color: #1a1a2e;">seleta</span>
+        <div class="eper-logo" style="background: #ffffff; padding: 5px 10px; border-radius: 4px; display: flex; align-items: center; margin-bottom: 8px;">
+            <img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/22449504./6ECFF29E478B05B93B2973D56786FCFE/standard_resolution.jpg" alt="Marca Seleta Logo" style="height: 28px; width: auto;">
         </div>
     </div>
 
     <!-- Subheader -->
-    <div class="eper-subheader d-flex justify-content-between align-items-center">
-        <div>
-            <div class="eper-btn-back d-inline-block">
-                <i class="bi bi-chevron-left"></i>
-            </div>
-            <span><i class="bi bi-car-front"></i> &raquo; BUSCA PARTE POR CÓDIGO</span>
+    <div class="eper-subheader">
+        <div class="eper-btn-back">
+            <i class="bi bi-chevron-left"></i>
         </div>
-        <div style="padding-right: 15px;">
-            <form action="/refresh" method="POST" style="margin: 0;">
-                <button type="submit" class="btn btn-sm btn-outline-secondary" style="font-size: 0.8rem; padding: 2px 8px;">
-                    <i class="bi bi-arrow-clockwise"></i> Renovar Sessão
-                </button>
-            </form>
-        </div>
+        <span><i class="bi bi-car-front"></i> &raquo; BUSCA PARTE POR CÓDIGO</span>
     </div>
 
     <div class="container-fluid px-4">
