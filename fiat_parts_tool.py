@@ -64,12 +64,17 @@ def login_and_get_cookies(headless: bool = True) -> dict:
     print("🔑 Iniciando login no Fiat Reparador (SeleniumBase UC)...")
     DEBUG_DIR.mkdir(exist_ok=True)
 
+    import platform
+    is_linux = platform.system() == "Linux"
+    
     # SeleniumBase Driver com uc=True ativa o modo anti-detecção
-    # --no-sandbox e --disable-dev-shm-usage são obrigatórios em servidores Linux (root)
+    # headless2=True usa o novo modo headless (--headless=new) que é mais estável
+    # xvfb=True cria um display virtual no Linux (necessário em servidores sem GUI)
     driver = Driver(
         uc=True,
-        headless=headless,
-        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu,--window-size=1280,900",
+        headless2=headless,
+        xvfb=is_linux,  # Virtual framebuffer apenas no Linux/VPS
+        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu",
     )
     driver.set_page_load_timeout(60)
 

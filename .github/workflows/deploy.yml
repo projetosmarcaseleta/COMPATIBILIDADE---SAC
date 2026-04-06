@@ -17,13 +17,14 @@ jobs:
         username: ${{ secrets.VPS_USERNAME }}
         key: ${{ secrets.VPS_SSH_KEY }}
         script: |
-          # Garante que o Google Chrome está instalado (necessário para undetected-chromedriver)
+          # Garante que o Google Chrome e Xvfb estão instalados
           if ! command -v google-chrome &> /dev/null; then
             echo "Instalando Google Chrome..."
             wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
             apt-get install -y /tmp/chrome.deb || apt-get install -fy
             rm /tmp/chrome.deb
           fi
+          apt-get install -y xvfb 2>/dev/null || true
           cd ~/projetos/COMPATIBILIDADE---SAC
           git fetch --all
           git reset --hard origin/main
