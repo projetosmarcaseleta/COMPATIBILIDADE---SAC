@@ -556,16 +556,26 @@ def search_fiatpecas(part_code):
 
 
 def refresh_session_loop():
-    """Background task: renova cookies automaticamente a cada 6 horas."""
+    """Background task: tenta login inicial após 10s, depois renova a cada 6 horas."""
+    # Primeiro login: espera 10s para o Flask já estar respondendo
+    time.sleep(10)
+    try:
+        print("[BACKGROUND] Tentando login inicial...")
+        fiat_parts_tool.get_cookies(headless=True)
+        print("[BACKGROUND] ✅ Login inicial bem-sucedido!")
+    except Exception as e:
+        print(f"[BACKGROUND] ⚠️ Login inicial falhou: {e}")
+        print("[BACKGROUND] ⚠️ Cookies serão obtidos na primeira busca do usuário.")
+
+    # Renovação periódica a cada 6 horas
     while True:
-        time.sleep(6 * 60 * 60)  # Espera 6 horas
+        time.sleep(6 * 60 * 60)
         try:
             print("[BACKGROUND] Iniciando renovação automática de cookies...")
             fiat_parts_tool.get_cookies(force_login=True, headless=True)
             print("[BACKGROUND] ✅ Cookies renovados com sucesso!")
         except Exception as e:
             print(f"[BACKGROUND] ❌ Erro ao renovar cookies: {e}")
-            print("[BACKGROUND] ⚠️ Tentará novamente em 6 horas.")
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -609,15 +619,8 @@ def index():
     return render_template_string(HTML_TEMPLATE, part=part, vc=vc, name_query=name_query, result=result_text, error=error_text, products=products)
 
 if __name__ == "__main__":
-    print("⚙️ Verificando cookies iniciais de acesso...")
-    try:
-        fiat_parts_tool.get_cookies(headless=True)
-        print("✅ Autenticação pronta.")
-    except Exception as e:
-        print(f"⚠️ Falha no login inicial: {e}")
-        print("⚠️ Tentará novamente quando o primeiro usuário fizer uma busca.")
-        
-    print("⚙️ Iniciando daemon de background para renovar cookies automaticamente a cada 6h...")
+    # Login acontece no background para não bloquear o Flask
+    print("⚙️ Iniciando daemon de background para login e renovação automática...")
     bg_thread = threading.Thread(target=refresh_session_loop, daemon=True)
     bg_thread.start()
     
