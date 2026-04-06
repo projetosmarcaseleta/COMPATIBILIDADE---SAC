@@ -65,7 +65,12 @@ def login_and_get_cookies(headless: bool = True) -> dict:
     DEBUG_DIR.mkdir(exist_ok=True)
 
     # SeleniumBase Driver com uc=True ativa o modo anti-detecção
-    driver = Driver(uc=True, headless=headless)
+    # --no-sandbox e --disable-dev-shm-usage são obrigatórios em servidores Linux (root)
+    driver = Driver(
+        uc=True,
+        headless=headless,
+        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu,--window-size=1280,900",
+    )
     driver.set_page_load_timeout(60)
 
     try:
