@@ -4,6 +4,7 @@ import json
 import requests
 from bs4 import BeautifulSoup
 from flask import Flask, request, render_template_string, redirect, url_for
+from curl_cffi import requests as cffi_requests
 import fiat_parts_tool
 
 app = Flask(__name__)
@@ -485,25 +486,17 @@ HTML_TEMPLATE = """
 def search_fiatpecas(part_code):
     """Fetch and parse product listings from fiatpecas.com.br for a given part code."""
     url = f"https://fiatpecas.com.br/search/?q={part_code}"
-    # Usando cloudscraper para contornar bloqueios de WAF (Cloudflare etc) em IPs de datacenter
-    import cloudscraper
-    scraper = cloudscraper.create_scraper(
-        browser={
-            'browser': 'chrome',
-            'platform': 'windows',
-            'desktop': True
-        }
-    )
     
     try:
-        resp = scraper.get(url, timeout=20)
-        # Se for 403 mesmo com scraper, não vai quebrar, só retorna lista vazia
+        # curl_cffi imitates Chrome TLS perfectly to bypass Cloudflare 403
+        resp = cffi_requests.get(url, impersonate="chrome120", timeout=20)
         if resp.status_code != 200:
             print(f"[FIATPECAS] Resposta não-200: {resp.status_code}")
             return []
     except Exception as e:
-        print(f"[FIATPECAS] Erro na requisição (Scraper): {e}")
+        print(f"[FIATPECAS] Erro na requisição (curl_cffi): {e}")
         return []
+
 
     soup = BeautifulSoup(resp.text, "html.parser")
     items = soup.select(".js-item-product")
