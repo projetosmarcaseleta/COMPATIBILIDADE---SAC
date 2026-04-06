@@ -329,6 +329,22 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         print(f"  ✅ Login bem-sucedido! ({len(cookies_dict)} cookies obtidos)")
         return cookies_dict
 
+    except Exception as e:
+        final_url = "Desconhecida"
+        final_title = "Desconhecido"
+        try:
+            final_url = driver.current_url
+            final_title = driver.title
+            driver.save_screenshot(str(DEBUG_DIR / "final_error_crash.png"))
+        except:
+            pass
+            
+        error_msg = str(e)
+        if "Stacktrace:" in error_msg or "TimeoutException" in str(type(e)):
+            raise Exception(f"Timeout na interface do login. O site demorou muito para responder ou bloqueou o acesso do servidor. (URL: {final_url} | Título: {final_title})")
+        else:
+            raise Exception(f"Erro durante o login no navegador: {error_msg} (URL: {final_url})")
+
     finally:
         try:
             driver.quit()
