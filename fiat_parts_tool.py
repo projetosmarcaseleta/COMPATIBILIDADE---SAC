@@ -156,18 +156,16 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         email_input.click()
         time.sleep(0.3)
         email_input.clear()
-        email_input.send_keys(EMAIL)
-        time.sleep(2)
+        for char in EMAIL:
+            email_input.send_keys(char)
+            time.sleep(0.01)
+        time.sleep(1)
         driver.save_screenshot(str(DEBUG_DIR / "04_email_typed.png"))
 
-        # Click CONTINUAR (email step)
-        print("  → Clicando CONTINUAR...")
-        continuar_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
-        for btn in continuar_btns:
-            if btn.is_displayed():
-                driver.execute_script("arguments[0].click()", btn)
-                break
-        print("  ✓ CONTINUAR clicado")
+        # Submit email via Enter
+        print("  → Enviando e-mail (Enter)...")
+        email_input.send_keys(Keys.ENTER)
+        print("  ✓ E-mail enviado")
 
         # Wait for password screen
         print("  → Aguardando tela de senha...")
@@ -188,21 +186,17 @@ def login_and_get_cookies(headless: bool = True) -> dict:
                 time.sleep(0.5)
             except Exception:
                 pass
-            # Re-type email and click CONTINUAR again
+            # Re-type email and submit again
             try:
                 email_field = driver.find_element(By.CSS_SELECTOR, "input.hub-input-field")
                 email_field.click()
                 email_field.clear()
                 for char in EMAIL:
                     email_field.send_keys(char)
-                    time.sleep(0.05)
-                time.sleep(2)
-                retry_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
-                for btn in retry_btns:
-                    if btn.is_displayed():
-                        driver.execute_script("arguments[0].click()", btn)
-                        break
-                print("  ✓ CONTINUAR clicado (2a tentativa)")
+                    time.sleep(0.01)
+                time.sleep(1)
+                email_field.send_keys(Keys.ENTER)
+                print("  ✓ E-mail enviado (2a tentativa via Enter)")
                 time.sleep(8)
                 driver.save_screenshot(str(DEBUG_DIR / "05c_after_retry.png"))
             except Exception as e:
@@ -220,13 +214,9 @@ def login_and_get_cookies(headless: bool = True) -> dict:
         time.sleep(1)
         driver.save_screenshot(str(DEBUG_DIR / "06_password_typed.png"))
 
-        # Click CONTINUAR (password step)
-        print("  → Clicando CONTINUAR...")
-        continuar_btns = driver.find_elements(By.XPATH, "//a[contains(@class, 'hub-button') and contains(text(), 'CONTINUAR')]")
-        for btn in continuar_btns:
-            if btn.is_displayed():
-                driver.execute_script("arguments[0].click()", btn)
-                break
+        # Submit password via Enter
+        print("  → Enviando senha (Enter)...")
+        password_input.send_keys(Keys.ENTER)
         print("  → Aguardando autenticação...")
         time.sleep(10)
         driver.save_screenshot(str(DEBUG_DIR / "07_after_login.png"))
