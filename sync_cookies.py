@@ -18,7 +18,7 @@ from pathlib import Path
 # ── Configuração do servidor ──────────────────────────────────────────────────
 SERVER_USER = "root"
 SERVER_IP   = "195.200.0.29"
-SERVER_PATH = "/root/COMPATIBILIDADE - SAC/.fiat_cookies.pkl"
+SERVER_PATH = "/root/projetos/COMPATIBILIDADE---SAC/.fiat_cookies.pkl"
 # ─────────────────────────────────────────────────────────────────────────────
 
 COOKIES_FILE = Path(__file__).parent / ".fiat_cookies.pkl"

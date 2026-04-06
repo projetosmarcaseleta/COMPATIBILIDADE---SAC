@@ -592,13 +592,18 @@ def index():
                 chassis = vc if vc else None
                 print(f"WEB: Consultando peça {part}" + (f" para chassi {chassis}" if chassis else ""))
 
-                # A função query_with_retry já lê os cookies, faz request e trata erros/re-login.
-                data = fiat_parts_tool.query_with_retry(part, chassis, headless=True)
-
-                if data is None:
-                    error_text = "A API não retornou dados ou a autenticação final falhou."
+                # No servidor, NUNCA tenta login. Apenas lê cookies do cache.
+                cookies = fiat_parts_tool.load_cookies()
+                if not cookies:
+                    error_text = "⚠️ Cookies expirados ou ausentes. Execute sync_cookies.py na máquina local para renovar."
                 else:
-                    result_text = fiat_parts_tool.format_applicability(data, part)
+                    data = fiat_parts_tool.query_part_applicability(part, chassis, cookies)
+
+                    if data is None:
+                        # 401 da API — cookies inválidos
+                        error_text = "⚠️ Sessão expirada na API. Execute sync_cookies.py na máquina local para renovar os cookies."
+                    else:
+                        result_text = fiat_parts_tool.format_applicability(data, part)
 
             except Exception as e:
                 error_text = str(e)
@@ -611,14 +616,16 @@ def index():
     return render_template_string(HTML_TEMPLATE, part=part, vc=vc, name_query=name_query, result=result_text, error=error_text, products=products)
 
 if __name__ == "__main__":
-    print("⚙️ Verificando cookies iniciais de acesso...")
-    try:
-        fiat_parts_tool.get_cookies(headless=True)
-        print("✅ Autenticação pronta.")
-    except Exception as e:
-        print(f"⚠️ Atenção: Falha no login inicial, tentará ao buscar a primeira peça: {e}")
+    # No servidor, NUNCA tenta login via Playwright (IP de datacenter é bloqueado).
+    # Apenas verifica se existe um cache de cookies válido.
+    print("⚙️ Verificando cookies em cache...")
+    cookies = fiat_parts_tool.load_cookies()
+    if cookies:
+        print("✅ Cookies em cache encontrados e válidos.")
+    else:
+        print("⚠️ Cookies ausentes ou expirados. Execute sync_cookies.py na máquina local para sincronizar.")
         
-    print("⚙️ Iniciando daemon de background para renovar a sessão automaticamente a cada 25m...")
+    print("⚙️ Iniciando daemon de background para monitorar cookies a cada 1h...")
     bg_thread = threading.Thread(target=refresh_session_loop, daemon=True)
     bg_thread.start()
     

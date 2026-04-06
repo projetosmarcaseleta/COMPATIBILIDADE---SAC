@@ -12,13 +12,18 @@ Usage:
 
 import argparse
 import json
-import sys
 import time
 import pickle
 from pathlib import Path
 
 import requests
-from playwright.sync_api import sync_playwright
+try:
+    from playwright_extra import sync_playwright
+    from playwright_extra.stealth import stealth_sync  # noqa: F401
+    _STEALTH = True
+except ImportError:
+    from playwright.sync_api import sync_playwright
+    _STEALTH = False
 
 
 # ── Configuration ──────────────────────────────────────────────────────────────
