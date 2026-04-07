@@ -474,14 +474,38 @@ def search_fiatpecas(part_code):
     """Fetch and parse product listings from fiatpecas.com.br for a given part code."""
     url = f"https://fiatpecas.com.br/search/?q={part_code}"
     
-    try:
-        # curl_cffi imitates Chrome TLS perfectly to bypass Cloudflare 403
-        resp = cffi_requests.get(url, impersonate="chrome120", timeout=20)
-        if resp.status_code != 200:
-            print(f"[FIATPECAS] Resposta não-200: {resp.status_code}")
-            return []
-    except Exception as e:
-        print(f"[FIATPECAS] Erro na requisição (curl_cffi): {e}")
+    resp = None
+    # Perfis para rotacionar caso a VPS seja bloqueada em algum deles
+    impersonates = ["chrome124", "safari17_0", "chrome120", "edge101"]
+    
+    for imp in impersonates:
+        try:
+            # curl_cffi imitates Browser TLS perfectly to bypass Cloudflare 403
+            resp = cffi_requests.get(url, impersonate=imp, timeout=15)
+            if resp.status_code == 200:
+                print(f"[FIATPECAS] Sucesso ao usar a técnica impersonate='{imp}'")
+                break
+            else:
+                print(f"[FIATPECAS] Resposta não-200 com '{imp}': {resp.status_code}")
+        except Exception as e:
+            print(f"[FIATPECAS] Erro na requisição (curl_cffi, {imp}): {e}")
+
+    # Adiciona fallback para cloudscraper se o curl_cffi falhar em todos
+    if not resp or resp.status_code != 200:
+        print("[FIATPECAS] Tentando fallback com Cloudscraper...")
+        try:
+            import cloudscraper
+            scraper = cloudscraper.create_scraper()
+            resp = scraper.get(url, timeout=15)
+            if resp.status_code == 200:
+                print("[FIATPECAS] Sucesso com Cloudscraper!")
+            else:
+                print(f"[FIATPECAS] Resposta não-200 no Cloudscraper: {resp.status_code}")
+        except Exception as e:
+            print(f"[FIATPECAS] Erro com Cloudscraper: {e}")
+
+    if not resp or resp.status_code != 200:
+        print(f"[FIATPECAS] Falha definitiva. Status code: {resp.status_code if resp else 'N/A'}")
         return []
 
 
