@@ -17,6 +17,7 @@ jobs:
         username: ${{ secrets.VPS_USERNAME }}
         key: ${{ secrets.VPS_SSH_KEY }}
         script: |
+          set -e
           # Garante que o Google Chrome e Xvfb estão instalados
           if ! command -v google-chrome &> /dev/null; then
             echo "Instalando Google Chrome..."
@@ -25,10 +26,40 @@ jobs:
             rm /tmp/chrome.deb
           fi
           apt-get install -y xvfb 2>/dev/null || true
-          cd ~/projetos/COMPATIBILIDADE---SAC
+
+          APP_DIR="$HOME/projetos/COMPATIBILIDADE---SAC"
+          cd "$APP_DIR"
+
+          echo "=== Atualizando codigo ==="
           git fetch --all
           git reset --hard origin/main
           git clean -df
+
+          DEPLOYED=$(git rev-parse --short HEAD)
+          VERSION=$(grep -o 'Versão: [^|]*' fiat_server.py | head -1 || echo "versao nao encontrada")
+          echo "Commit deployado: $DEPLOYED"
+          echo "Arquivo local: $VERSION"
+
+          echo "=== Instalando dependencias ==="
           source venv/bin/activate
-          pip install -r requirements.txt
-          pm2 restart fiat-eper
+          pip install -r requirements.txt -q
+
+          echo "=== Reiniciando PM2 ==="
+          pm2 delete fiat-eper 2>/dev/null || true
+          pm2 start fiat_server.py \
+            --name fiat-eper \
+            --interpreter "$APP_DIR/venv/bin/python" \
+            --cwd "$APP_DIR"
+          pm2 save
+
+          echo "=== Verificando servico ==="
+          sleep 3
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5002/ || echo "000")
+          LIVE=$(curl -s http://127.0.0.1:5002/ | grep -o 'Versão: [^|]*' | head -1 || echo "nao detectada")
+          echo "HTTP local: $HTTP | Versao servida: $LIVE"
+
+          if [ "$HTTP" != "200" ]; then
+            echo "ERRO: servico nao respondeu na porta 5002"
+            pm2 logs fiat-eper --lines 30 --nostream
+            exit 1
+          fi
