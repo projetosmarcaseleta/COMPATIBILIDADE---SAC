@@ -1,13 +1,31 @@
+import sys
+import os
+
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
 import time
 import threading
 import json
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, request, render_template_string, redirect, url_for
+from flask import Flask, request, redirect, url_for
 from curl_cffi import requests as cffi_requests
 import fiat_parts_tool
 
 app = Flask(__name__)
+
+FIATPECAS_IMPERSONATES = ["chrome124", "safari17_0", "chrome120", "edge101"]
+FIATPECAS_CACHE_TTL = 300
+_fiatpecas_winning_profile = None
+_fiatpecas_cache: dict[str, tuple[float, list]] = {}
+_fiatpecas_cache_lock = threading.Lock()
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -289,6 +307,106 @@ HTML_TEMPLATE = """
             color: #555;
             font-size: 0.9rem;
         }
+
+        /* Bulk search */
+        .bulk-search-box {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            border: 1px solid #005fa9;
+            padding: 15px;
+        }
+        .bulk-search-box textarea {
+            border: 1px solid #ddd;
+            border-radius: 0;
+            font-size: 0.9rem;
+            font-family: 'Consolas', 'Courier New', monospace;
+            resize: vertical;
+            min-height: 160px;
+        }
+        .bulk-search-box textarea:focus {
+            border-color: #005fa9;
+            box-shadow: none;
+        }
+        .bulk-hint {
+            font-size: 0.75rem;
+            color: #777;
+            margin-top: 6px;
+        }
+        .compat-table {
+            width: 100%;
+            font-size: 0.85rem;
+            margin: 0;
+        }
+        .compat-table thead th {
+            background-color: #005fa9;
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            padding: 10px 12px;
+            border: none;
+        }
+        .compat-table tbody td {
+            padding: 10px 12px;
+            vertical-align: top;
+            border-bottom: 1px solid #eee;
+        }
+        .compat-table tbody tr:nth-child(even) {
+            background-color: #f7fbff;
+        }
+        .compat-table .col-part {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-weight: 600;
+            white-space: nowrap;
+            width: 140px;
+        }
+        .compat-table .col-desc {
+            width: 180px;
+            color: #555;
+        }
+        .compat-table .col-result {
+            color: #333;
+            line-height: 1.45;
+        }
+        .compat-summary {
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-top: 1px solid #ddd;
+            font-size: 0.85rem;
+            color: #444;
+        }
+        .compat-summary .count-found {
+            color: #1a7a2e;
+            font-weight: 600;
+        }
+        .compat-summary .count-not-found {
+            color: #bf1018;
+            font-weight: 600;
+        }
+        .btn-copy-results {
+            background-color: #4a4a6a;
+            color: white;
+            border: none;
+            border-radius: 0;
+            padding: 6px 14px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-copy-results:hover {
+            background-color: #36365a;
+        }
+        .btn-copy-results.copied {
+            background-color: #1a7a2e;
+        }
+        .report-title {
+            padding: 15px;
+            font-size: 1.05rem;
+            color: #005fa9;
+            font-weight: 700;
+            border-bottom: 1px solid #ddd;
+        }
     </style>
     <script>
     function copyProductLink(btn, url) {
@@ -297,6 +415,19 @@ HTML_TEMPLATE = """
             btn.classList.add('copied');
             setTimeout(function() {
                 btn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                btn.classList.remove('copied');
+            }, 1500);
+        });
+    }
+    function copyCompatResults(btn) {
+        var el = document.getElementById('compat-results-text');
+        if (!el) return;
+        navigator.clipboard.writeText(el.textContent).then(function() {
+            var original = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Copiado!';
+            btn.classList.add('copied');
+            setTimeout(function() {
+                btn.innerHTML = original;
                 btn.classList.remove('copied');
             }, 1500);
         });
@@ -314,7 +445,7 @@ HTML_TEMPLATE = """
 
     <!-- Subheader -->
     <div class="eper-subheader">
-        <span style="padding-left: 20px;"><i class="bi bi-car-front"></i> &raquo; BUSCA PARTE POR CÓDIGO</span>
+        <span style="padding-left: 20px;"><i class="bi bi-car-front"></i> &raquo; BUSCA DE COMPATIBILIDADE</span>
     </div>
 
     <div class="container-fluid px-4">
@@ -322,21 +453,31 @@ HTML_TEMPLATE = """
         <!-- Search Area -->
         <div class="search-container" style="flex-direction: column; gap: 10px;">
             <form method="POST" class="w-100 d-flex flex-column align-items-center">
-                <div class="d-flex w-100" style="max-width: 700px; margin-bottom: 5px;">
-                    <div style="width: 40%; padding-left: 5px;"><label for="part" class="form-label text-muted small fw-bold mb-0" style="font-size: 0.75rem;">CÓDIGO DA PEÇA</label></div>
-                    <div style="width: 60%; padding-left: 15px;"><label for="vc" class="form-label text-muted small fw-bold mb-0" style="font-size: 0.75rem;">CHASSI (Opcional)</label></div>
-                </div>
-                <div class="search-box">
-                    <input type="text" class="form-control" style="width: 40%; border-right: 1px solid #eee;" id="part" name="part" value="{{ part }}" required placeholder="Ex: 14144190">
-                    <input type="text" class="form-control" style="width: 60%;" id="vc" name="vc" value="{{ vc }}" placeholder="Ex: 9BWAA01J754038498">
-                    <button type="submit" class="btn btn-search"><i class="bi bi-search"></i></button>
+                <div class="bulk-search-box">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label for="parts_bulk" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">CÓDIGOS DAS PEÇAS (uma por linha)</label>
+                            <textarea class="form-control" id="parts_bulk" name="parts_bulk" rows="8" placeholder="K55111314AC	Reservatório&#10;K55111354AA	Tampa&#10;K05168128AB	Barra estabilizadora&#10;K68073033AC	Haste da barra">{{ parts_bulk }}</textarea>
+                            <div class="bulk-hint">Cole vários códigos de uma vez. Use tab, ponto-e-vírgula ou espaço para incluir a descrição opcional.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="vc" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">CHASSI (Opcional)</label>
+                            <input type="text" class="form-control mb-3" id="vc" name="vc" value="{{ vc }}" placeholder="Ex: 9BWAA01J754038498">
+                            <label for="vehicle_label" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">VEÍCULO (Opcional)</label>
+                            <input type="text" class="form-control" id="vehicle_label" name="vehicle_label" value="{{ vehicle_label }}" placeholder="Ex: FIAT 500 (2010–2018)">
+                            <div class="bulk-hint">Título do relatório. Se vazio, será inferido dos resultados.</div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-search"><i class="bi bi-search me-1"></i> Consultar Compatibilidade</button>
+                    </div>
                 </div>
             </form>
             <form method="POST" class="w-100 d-flex flex-column align-items-center">
-                <div class="d-flex w-100" style="max-width: 700px; margin-bottom: 5px;">
+                <div class="d-flex w-100" style="max-width: 900px; margin-bottom: 5px;">
                     <div style="padding-left: 5px;"><label for="name_query" class="form-label text-muted small fw-bold mb-0" style="font-size: 0.75rem;">BUSCAR POR NOME (FiatPecas.com.br)</label></div>
                 </div>
-                <div class="search-box">
+                <div class="search-box" style="max-width: 900px;">
                     <input type="text" class="form-control" id="name_query" name="name_query" value="{{ name_query }}" placeholder="Ex: Lâmpada pingo d'água w5w">
                     <button type="submit" class="btn btn-search"><i class="bi bi-search"></i></button>
                 </div>
@@ -359,43 +500,51 @@ HTML_TEMPLATE = """
         </div>
         {% endif %}
 
-        {% if result %}
+        {% if batch_results %}
         <div class="mx-auto" style="max-width: 1200px;">
-            
-            <!-- Details Panel -->
-            <div class="eper-panel">
-                <div class="eper-panel-header">Detalhes</div>
-                <div class="eper-panel-title">
-                    <i class="bi bi-cart-plus"></i> Código da Peça: {{ part }}
+            <div class="eper-panel mt-2">
+                <div class="eper-panel-header d-flex justify-content-between align-items-center">
+                    <span>Resultado de Compatibilidade</span>
+                    <button type="button" class="btn-copy-results" onclick="copyCompatResults(this)"><i class="bi bi-clipboard"></i> Copiar relatório</button>
                 </div>
+                <div class="report-title">Resultado de Compatibilidade — {{ report_title }}</div>
                 <div class="eper-panel-body">
-                    {% if "Nenhuma aplicação" in result %}
-                    <div class="p-4 text-center text-muted">
-                        Nenhuma aplicação encontrada para a peça selecionada no catálogo.
+                    <table class="table compat-table mb-0">
+                        <thead>
+                            <tr>
+                                <th class="col-part">Peça</th>
+                                <th class="col-desc">Descrição</th>
+                                <th class="col-result">Resultado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in batch_results %}
+                            <tr>
+                                <td class="col-part">{{ row.code }}</td>
+                                <td class="col-desc">{{ row.description or '—' }}</td>
+                                <td class="col-result">{{ row.result }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <div class="compat-summary">
+                        <span class="count-found">{{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação</span>
+                        /
+                        <span class="count-not-found">{{ not_found_count }} sem resultado no catálogo</span>
+                        {% if not_found_codes %}
+                        ({{ not_found_codes | join(', ') }}).
+                        {% else %}
+                        .
+                        {% endif %}
                     </div>
-                    {% else %}
-                    <div class="data-grid bg-light-blue">
-                        <div class="data-row">
-                            <div class="data-label">CHASSI FORNECIDO:</div>
-                            <div class="data-value">{{ vc if vc else 'NENHUM (Busca Global)' }}</div>
-                        </div>
-                        <div class="data-row">
-                            <div class="data-label">DISPONIBILIDADE:</div>
-                            <div class="data-value">PRODUTO LISTADO NO CATÁLOGO</div>
-                        </div>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
+            <pre id="compat-results-text" style="display:none;">Resultado de Compatibilidade — {{ report_title }}
 
-            <!-- Applicability Panel -->
-            <div class="eper-panel mt-4">
-                <div class="eper-panel-header">Lista de Aplicabilidade</div>
-                <div class="eper-panel-body">
-                    <pre class="raw-output"><code>{{ result }}</code></pre>
-                </div>
-            </div>
-
+Peça	Descrição	Resultado
+{% for row in batch_results %}{{ row.code }}	{{ row.description or '—' }}	{{ row.result }}
+{% endfor %}
+{{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação / {{ not_found_count }} sem resultado no catálogo{% if not_found_codes %} ({{ not_found_codes | join(', ') }}){% endif %}.</pre>
         </div>
         {% endif %}
 
@@ -447,7 +596,7 @@ HTML_TEMPLATE = """
         </div>
         {% endif %}
 
-        {% if not products and (part or name_query) and not error %}
+        {% if not products and name_query and not error %}
         <div class="mx-auto" style="max-width: 1200px;">
             <div class="eper-panel mt-4">
                 <div class="eper-panel-header"><i class="bi bi-shop me-1"></i> Produtos Encontrados no FiatPecas.com.br</div>
@@ -463,76 +612,36 @@ HTML_TEMPLATE = """
 
     <!-- Footer com Versão -->
     <div style="text-align: center; padding: 20px; color: #888; font-size: 0.7rem; margin-top: 40px; border-top: 1px solid #ddd;">
-        Versão: 1.0.4 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 30/03/2026 10:15
+        Versão: 1.2.0 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 15/06/2026 11:30
     </div>
 
 </body>
 </html>
 """
 
-def search_fiatpecas(part_code):
-    """Fetch and parse product listings from fiatpecas.com.br for a given part code."""
-    url = f"https://fiatpecas.com.br/search/?q={part_code}"
-    
-    resp = None
-    # Perfis para rotacionar caso a VPS seja bloqueada em algum deles
-    impersonates = ["chrome124", "safari17_0", "chrome120", "edge101"]
-    
-    for imp in impersonates:
-        try:
-            # curl_cffi imitates Browser TLS perfectly to bypass Cloudflare 403
-            resp = cffi_requests.get(url, impersonate=imp, timeout=15)
-            if resp.status_code == 200:
-                print(f"[FIATPECAS] Sucesso ao usar a técnica impersonate='{imp}'")
-                break
-            else:
-                print(f"[FIATPECAS] Resposta não-200 com '{imp}': {resp.status_code}")
-        except Exception as e:
-            print(f"[FIATPECAS] Erro na requisição (curl_cffi, {imp}): {e}")
-
-    # Adiciona fallback para cloudscraper se o curl_cffi falhar em todos
-    if not resp or resp.status_code != 200:
-        print("[FIATPECAS] Tentando fallback com Cloudscraper...")
-        try:
-            import cloudscraper
-            scraper = cloudscraper.create_scraper()
-            resp = scraper.get(url, timeout=15)
-            if resp.status_code == 200:
-                print("[FIATPECAS] Sucesso com Cloudscraper!")
-            else:
-                print(f"[FIATPECAS] Resposta não-200 no Cloudscraper: {resp.status_code}")
-        except Exception as e:
-            print(f"[FIATPECAS] Erro com Cloudscraper: {e}")
-
-    if not resp or resp.status_code != 200:
-        print(f"[FIATPECAS] Falha definitiva. Status code: {resp.status_code if resp else 'N/A'}")
-        return []
+HTML_TEMPLATE_COMPILED = app.jinja_env.from_string(HTML_TEMPLATE)
 
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+def _parse_fiatpecas_html(html: str) -> list:
+    soup = BeautifulSoup(html, "html.parser")
     items = soup.select(".js-item-product")
     products = []
 
     for item in items:
         try:
-            # URL
             link_tag = item.select_one("a[href]")
             product_url = link_tag["href"] if link_tag else "#"
 
-            # Name
             name_tag = item.select_one(".js-item-name")
             name = name_tag.get_text(strip=True) if name_tag else ""
 
-            # Image (lazy-loaded via data-srcset)
             img_tag = item.select_one("img.js-item-image")
             image = ""
             if img_tag:
                 srcset = img_tag.get("data-srcset", "") or img_tag.get("srcset", "") or img_tag.get("src", "")
                 if srcset:
-                    # Take first URL from srcset (format: "url 1x, url 2x" or just "url")
                     image = srcset.split(",")[0].strip().split(" ")[0]
 
-            # Prices and installments from data-variants JSON
             container = item.select_one(".js-product-container")
             price_original = ""
             price_pix = ""
@@ -574,7 +683,64 @@ def search_fiatpecas(part_code):
             print(f"[FIATPECAS] Erro ao parsear produto: {e}")
             continue
 
+    return products
+
+
+def search_fiatpecas(part_code):
+    """Fetch and parse product listings from fiatpecas.com.br for a given part code."""
+    global _fiatpecas_winning_profile
+
+    with _fiatpecas_cache_lock:
+        cached = _fiatpecas_cache.get(part_code)
+        if cached and time.time() - cached[0] < FIATPECAS_CACHE_TTL:
+            return cached[1]
+
+    url = f"https://fiatpecas.com.br/search/?q={part_code}"
+    profiles = []
+    if _fiatpecas_winning_profile:
+        profiles.append(_fiatpecas_winning_profile)
+    profiles.extend(p for p in FIATPECAS_IMPERSONATES if p != _fiatpecas_winning_profile)
+
+    resp = None
+    used_profile = None
+
+    for imp in profiles:
+        try:
+            resp = cffi_requests.get(url, impersonate=imp, timeout=15)
+            if resp.status_code == 200:
+                used_profile = imp
+                print(f"[FIATPECAS] Sucesso com impersonate='{imp}'")
+                break
+            print(f"[FIATPECAS] Resposta nao-200 com '{imp}': {resp.status_code}")
+        except Exception as e:
+            print(f"[FIATPECAS] Erro (curl_cffi, {imp}): {e}")
+
+    if not resp or resp.status_code != 200:
+        print("[FIATPECAS] Tentando fallback com Cloudscraper...")
+        try:
+            import cloudscraper
+            scraper = cloudscraper.create_scraper()
+            resp = scraper.get(url, timeout=15)
+            if resp.status_code == 200:
+                print("[FIATPECAS] Sucesso com Cloudscraper!")
+            else:
+                print(f"[FIATPECAS] Resposta nao-200 no Cloudscraper: {resp.status_code}")
+        except Exception as e:
+            print(f"[FIATPECAS] Erro com Cloudscraper: {e}")
+
+    if not resp or resp.status_code != 200:
+        print(f"[FIATPECAS] Falha definitiva. Status: {resp.status_code if resp else 'N/A'}")
+        return []
+
+    if used_profile:
+        _fiatpecas_winning_profile = used_profile
+
+    products = _parse_fiatpecas_html(resp.text)
     print(f"[FIATPECAS] {len(products)} produto(s) encontrado(s) para '{part_code}'")
+
+    with _fiatpecas_cache_lock:
+        _fiatpecas_cache[part_code] = (time.time(), products)
+
     return products
 
 
@@ -585,10 +751,10 @@ def refresh_session_loop():
     try:
         print("[BACKGROUND] Tentando login inicial...")
         fiat_parts_tool.get_cookies(headless=True)
-        print("[BACKGROUND] ✅ Login inicial bem-sucedido!")
+        print("[BACKGROUND] Login inicial bem-sucedido!")
     except Exception as e:
-        print(f"[BACKGROUND] ⚠️ Login inicial falhou: {e}")
-        print("[BACKGROUND] ⚠️ Cookies serão obtidos na primeira busca do usuário.")
+        print(f"[BACKGROUND] Login inicial falhou: {e}")
+        print("[BACKGROUND] Cookies serao obtidos na primeira busca do usuario.")
 
     # Renovação periódica a cada 6 horas
     while True:
@@ -596,9 +762,9 @@ def refresh_session_loop():
         try:
             print("[BACKGROUND] Iniciando renovação automática de cookies...")
             fiat_parts_tool.get_cookies(force_login=True, headless=True)
-            print("[BACKGROUND] ✅ Cookies renovados com sucesso!")
+            print("[BACKGROUND] Cookies renovados com sucesso!")
         except Exception as e:
-            print(f"[BACKGROUND] ❌ Erro ao renovar cookies: {e}")
+            print(f"[BACKGROUND] Erro ao renovar cookies: {e}")
 
 @app.route("/refresh", methods=["POST"])
 def refresh():
@@ -608,7 +774,7 @@ def refresh():
         # We pass a success flag in the URL parameter via redirect
         return redirect(url_for('index', refreshed='success'))
     except Exception as e:
-        print(f"[WEB] ❌ Falha na renovação manual: {e}")
+        print(f"[WEB] Falha na renovacao manual: {e}")
         return redirect(url_for('index', refreshed='error', errmsg=str(e)[:100]))
 
 @app.route("/", methods=["GET", "POST"])
@@ -616,47 +782,80 @@ def index():
     part = ""
     vc = ""
     name_query = ""
-    result_text = None
+    parts_bulk = ""
+    vehicle_label = ""
     error_text = None
     products = []
+    batch_results = None
+    report_title = ""
+    found_count = 0
+    not_found_count = 0
+    not_found_codes = []
 
     if request.method == "POST":
-        part = request.form.get("part", "").strip()
+        parts_bulk = request.form.get("parts_bulk", "").strip()
         vc = request.form.get("vc", "").strip()
+        vehicle_label = request.form.get("vehicle_label", "").strip()
         name_query = request.form.get("name_query", "").strip()
 
-        if name_query and not part:
-            # Name-only search: only hits FiatPecas
+        if name_query and not parts_bulk:
             print(f"WEB: Buscando por nome '{name_query}' no FiatPecas")
             products = search_fiatpecas(name_query)
-        elif part:
-            try:
+        elif parts_bulk:
+            entries = fiat_parts_tool.parse_bulk_parts(parts_bulk)
+            if not entries:
+                error_text = "Nenhum código de peça válido encontrado no texto informado."
+            else:
                 chassis = vc if vc else None
-                print(f"WEB: Consultando peça {part}" + (f" para chassi {chassis}" if chassis else ""))
+                print(f"WEB: Consultando {len(entries)} peca(s) em lote" + (f" para chassi {chassis}" if chassis else ""))
+                batch_results = fiat_parts_tool.query_batch(entries, chassis, headless=True)
 
-                # Usa cookies em cache ou faz login automático se necessário
-                data = fiat_parts_tool.query_with_retry(part, chassis, headless=True)
+                found_count = sum(1 for r in batch_results if r["found"])
+                not_found_count = len(batch_results) - found_count
+                not_found_codes = [r["code"] for r in batch_results if not r["found"]]
+                report_title = fiat_parts_tool.infer_vehicle_label(vehicle_label, vc, batch_results)
 
-                if data is None:
-                    error_text = "A API não retornou dados ou a autenticação falhou."
-                else:
-                    result_text = fiat_parts_tool.format_applicability(data, part)
-
-            except Exception as e:
-                error_text = str(e)
-
-            # Always search FiatPecas by part code alongside ePER
-            products = search_fiatpecas(part)
+                if len(entries) == 1:
+                    part = entries[0]["code"]
+                    products = search_fiatpecas(part)
         else:
-            error_text = "Informe um código de peça ou um nome para buscar."
+            error_text = "Informe um ou mais códigos de peça ou um nome para buscar."
 
-    return render_template_string(HTML_TEMPLATE, part=part, vc=vc, name_query=name_query, result=result_text, error=error_text, products=products)
+    return HTML_TEMPLATE_COMPILED.render(
+        request=request,
+        part=part,
+        vc=vc,
+        name_query=name_query,
+        parts_bulk=parts_bulk,
+        vehicle_label=vehicle_label,
+        error=error_text,
+        products=products,
+        batch_results=batch_results,
+        report_title=report_title,
+        found_count=found_count,
+        not_found_count=not_found_count,
+        not_found_codes=not_found_codes,
+    )
 
 if __name__ == "__main__":
-    # Login acontece no background para não bloquear o Flask
-    print("⚙️ Iniciando daemon de background para login e renovação automática...")
+    print("[INFO] Iniciando daemon de background para login e renovacao automatica...")
     bg_thread = threading.Thread(target=refresh_session_loop, daemon=True)
     bg_thread.start()
-    
-    print("🚀 Servidor Web iniciado na porta 5002!")
-    app.run(host="0.0.0.0", port=5002)
+
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "5002"))
+    use_waitress = os.environ.get("USE_WAITRESS", "auto")
+
+    if use_waitress == "auto":
+        use_waitress = sys.platform != "win32"
+    else:
+        use_waitress = use_waitress.lower() in ("1", "true", "yes")
+
+    if use_waitress:
+        from waitress import serve
+        threads = int(os.environ.get("WAITRESS_THREADS", "8"))
+        print(f"[INFO] Waitress em http://{host}:{port} ({threads} threads)")
+        serve(app, host=host, port=port, threads=threads)
+    else:
+        print(f"[INFO] Flask dev em http://{host}:{port} (threaded)")
+        app.run(host=host, port=port, debug=False, use_reloader=False, threaded=True)

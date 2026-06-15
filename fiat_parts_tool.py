@@ -12,11 +12,26 @@ Usage:
 
 import argparse
 import json
+import re
+import sys
+import os
 import time
 import pickle
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
 import requests
+from requests.adapters import HTTPAdapter
 try:
     from seleniumbase import Driver
     from selenium.webdriver.common.by import By
@@ -50,6 +65,17 @@ HEADERS = {
         "Chrome/133.0.0.0 Safari/537.36"
     ),
 }
+
+API_TIMEOUT = (5, 20)
+RESULT_CACHE_TTL_SECONDS = 3600
+BATCH_MAX_WORKERS = 5
+
+_login_lock = threading.Lock()
+_cookie_memory: dict | None = None
+_cookie_memory_time: float = 0
+_api_session: requests.Session | None = None
+_result_cache: dict[tuple[str, str], tuple[float, dict]] = {}
+_result_cache_lock = threading.Lock()
 
 
 # ── Browser Login (SeleniumBase UC Mode) ───────────────────────────────────────
@@ -379,16 +405,19 @@ def login_and_get_cookies(headless: bool = True) -> dict:
 # ── Cookie Cache ───────────────────────────────────────────────────────────────
 
 def save_cookies(cookies: dict):
-    """Save cookies to disk for reuse."""
+    """Save cookies to disk and update in-memory cache."""
+    global _cookie_memory, _cookie_memory_time
     with open(COOKIES_FILE, "wb") as f:
         pickle.dump({"cookies": cookies, "time": time.time()}, f)
+    _cookie_memory = cookies
+    _cookie_memory_time = time.time()
 
 
 COOKIE_TTL_MINUTES = 480  # 8 horas — servidor usa cookies sincronizados da máquina local
 
 
 def load_cookies() -> dict | None:
-    """Load cached cookies if they exist and are less than COOKIE_TTL_MINUTES old."""
+    """Load cached cookies from disk if they exist and are fresh."""
     if not COOKIES_FILE.exists():
         return None
     try:
@@ -396,73 +425,239 @@ def load_cookies() -> dict | None:
             data = pickle.load(f)
         age_minutes = (time.time() - data["time"]) / 60
         if age_minutes > COOKIE_TTL_MINUTES:
-            print(f"⏰ Cookies em cache expiraram ({age_minutes:.0f} min). Novo login necessário.")
+            print(f"Cookies em cache expiraram ({age_minutes:.0f} min). Novo login necessario.")
             return None
-        print(f"♻️  Reutilizando cookies em cache ({age_minutes:.0f} min de idade)")
+        print(f"Reutilizando cookies em cache ({age_minutes:.0f} min de idade)")
         return data["cookies"]
     except Exception:
         return None
 
 
 def get_cookies(force_login: bool = False, headless: bool = True) -> dict:
-    """Get cookies from cache or perform new login."""
-    if not force_login:
-        cached = load_cookies()
-        if cached:
-            return cached
+    """Get cookies from memory/disk cache or perform new login (thread-safe)."""
+    global _cookie_memory, _cookie_memory_time
 
-    cookies = login_and_get_cookies(headless=headless)
-    save_cookies(cookies)
-    return cookies
+    with _login_lock:
+        if not force_login and _cookie_memory is not None:
+            age_minutes = (time.time() - _cookie_memory_time) / 60
+            if age_minutes <= COOKIE_TTL_MINUTES:
+                return _cookie_memory.copy()
+
+        if not force_login:
+            cached = load_cookies()
+            if cached:
+                _cookie_memory = cached
+                _cookie_memory_time = time.time()
+                return cached.copy()
+
+        cookies = login_and_get_cookies(headless=headless)
+        save_cookies(cookies)
+        return cookies.copy()
 
 
 # ── API Client ─────────────────────────────────────────────────────────────────
 
-def query_part_applicability(part_number: str, vc: str = None, cookies: dict = None) -> dict:
+def _get_api_session() -> requests.Session:
+    global _api_session
+    if _api_session is None:
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        adapter = HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=0)
+        session.mount("https://", adapter)
+        _api_session = session
+    return _api_session
+
+
+def _result_cache_key(part_number: str, vc: str | None) -> tuple[str, str]:
+    return (part_number.upper(), vc or "")
+
+
+def _get_cached_result(part_number: str, vc: str | None) -> dict | None:
+    key = _result_cache_key(part_number, vc)
+    with _result_cache_lock:
+        entry = _result_cache.get(key)
+        if entry and time.time() - entry[0] < RESULT_CACHE_TTL_SECONDS:
+            return entry[1]
+    return None
+
+
+def _set_cached_result(part_number: str, vc: str | None, data: dict):
+    key = _result_cache_key(part_number, vc)
+    with _result_cache_lock:
+        _result_cache[key] = (time.time(), data)
+
+
+def query_part_applicability(
+    part_number: str,
+    vc: str = None,
+    cookies: dict = None,
+    session: requests.Session = None,
+) -> dict | None:
     """Query the ePER part applicability API."""
     url = f"{API_BASE}/partApplicability/{part_number}"
     params = {}
     if vc:
         params["vc"] = vc
 
-    session = requests.Session()
-    session.headers.update(HEADERS)
-    session.cookies.update(cookies)
+    session = session or _get_api_session()
 
-    response = session.get(url, params=params)
+    try:
+        response = session.get(url, params=params, timeout=API_TIMEOUT, cookies=cookies or {})
+    except requests.Timeout:
+        raise TimeoutError(f"Timeout ao consultar peça {part_number}")
 
     if response.status_code == 401 or "Unauthorized" in response.text:
         return None
 
     if not response.text.strip():
-        # Empty response means part is not applicable for this chassis
         return {"catalog": []}
 
     try:
         response.raise_for_status()
         return response.json()
     except requests.exceptions.JSONDecodeError:
-        print(f"\n❌ Erro: API não retornou JSON. Status: {response.status_code}")
+        print(f"Erro: API nao retornou JSON. Status: {response.status_code}")
         print(f"URL de resposta: {response.url}")
-        print(f"Conteúdo:\n{response.text[:500]}...")
-        raise Exception(f"API respondeu com formato inválido (HTML). Status {response.status_code}")
+        print(f"Conteudo:\n{response.text[:500]}...")
+        raise Exception(f"API respondeu com formato invalido (HTML). Status {response.status_code}")
 
 
-def query_with_retry(part_number: str, vc: str = None, headless: bool = True) -> dict:
+def query_with_retry(
+    part_number: str,
+    vc: str = None,
+    headless: bool = True,
+    cookies: dict = None,
+    session: requests.Session = None,
+) -> dict:
     """Query API with automatic re-login on auth failure."""
-    cookies = get_cookies(headless=headless)
-    result = query_part_applicability(part_number, vc, cookies)
+    cached = _get_cached_result(part_number, vc)
+    if cached is not None:
+        return cached
+
+    if cookies is None:
+        cookies = get_cookies(headless=headless)
+    session = session or _get_api_session()
+
+    result = query_part_applicability(part_number, vc, cookies, session)
 
     if result is None:
-        print("🔄 Sessão expirada. Realizando novo login...")
-        cookies = get_cookies(force_login=True, headless=headless)
-        result = query_part_applicability(part_number, vc, cookies)
+        print("Sessao expirada. Realizando novo login...")
+        with _login_lock:
+            cookies = get_cookies(force_login=True, headless=headless)
+            result = query_part_applicability(part_number, vc, cookies, session)
 
         if result is None:
-            print("❌ Falha na autenticação mesmo após novo login.")
-            raise Exception("Falha na autenticação mesmo após tentar re-login na API.")
+            print("Falha na autenticacao mesmo apos novo login.")
+            raise Exception("Falha na autenticacao mesmo apos tentar re-login na API.")
 
+    _set_cached_result(part_number, vc, result)
     return result
+
+
+def _extract_model(data: dict) -> str:
+    for cat in data.get("catalog", []):
+        if cat.get("description"):
+            return cat.get("description")
+    return ""
+
+
+def _build_batch_row(entry: dict, data: dict | None, error: str | None) -> dict:
+    code = entry["code"]
+    user_desc = entry["description"]
+
+    if error:
+        return {
+            "code": code,
+            "description": user_desc or "",
+            "result": f"❌ Erro: {error}",
+            "found": False,
+            "model": "",
+        }
+
+    if data is None:
+        return {
+            "code": code,
+            "description": user_desc or "",
+            "result": "❌ Erro na consulta",
+            "found": False,
+            "model": "",
+        }
+
+    found, result_line, api_desc = format_compact_applicability(data)
+    model = _extract_model(data)
+    return {
+        "code": code,
+        "description": user_desc or api_desc or "",
+        "result": result_line,
+        "found": found,
+        "model": model,
+    }
+
+
+def query_batch(
+    entries: list[dict],
+    vc: str = None,
+    headless: bool = True,
+    max_workers: int = BATCH_MAX_WORKERS,
+) -> list[dict]:
+    """Query multiple parts in parallel, preserving input order."""
+    if not entries:
+        return []
+
+    cookies = get_cookies(headless=headless)
+    session = _get_api_session()
+
+    unique_codes = list(dict.fromkeys(e["code"] for e in entries))
+    results_by_code: dict[str, dict | None] = {}
+    auth_failed: list[str] = []
+    errors_by_code: dict[str, str] = {}
+
+    def _fetch(code: str):
+        cached = _get_cached_result(code, vc)
+        if cached is not None:
+            return code, cached, None, False
+
+        try:
+            data = query_part_applicability(code, vc, cookies, session)
+            if data is None:
+                return code, None, None, True
+            _set_cached_result(code, vc, data)
+            return code, data, None, False
+        except TimeoutError as e:
+            return code, None, str(e), False
+        except Exception as e:
+            return code, None, str(e), False
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_fetch, code) for code in unique_codes]
+        for future in as_completed(futures):
+            code, data, err, need_auth = future.result()
+            if need_auth:
+                auth_failed.append(code)
+            elif err:
+                errors_by_code[code] = err
+            results_by_code[code] = data
+
+    if auth_failed:
+        with _login_lock:
+            fresh_cookies = get_cookies(force_login=True, headless=headless)
+            for code in auth_failed:
+                try:
+                    data = query_part_applicability(code, vc, fresh_cookies, session)
+                    if data is None:
+                        errors_by_code[code] = "Falha na autenticacao"
+                        results_by_code[code] = None
+                    else:
+                        _set_cached_result(code, vc, data)
+                        results_by_code[code] = data
+                except Exception as e:
+                    errors_by_code[code] = str(e)
+                    results_by_code[code] = None
+
+    return [
+        _build_batch_row(entry, results_by_code.get(entry["code"]), errors_by_code.get(entry["code"]))
+        for entry in entries
+    ]
 
 
 # ── Output Formatting ──────────────────────────────────────────────────────────
@@ -501,6 +696,105 @@ def format_applicability(data: dict, part_number: str = "") -> str:
     lines.append(f"  Total: {len(applications)} catálogos com aplicação")
     lines.append("=" * 90)
     return "\n".join(lines)
+
+
+def parse_bulk_parts(text: str) -> list[dict]:
+    """Parse pasted text into part entries with optional descriptions."""
+    entries = []
+    seen = set()
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        code = ""
+        description = ""
+
+        if "\t" in line:
+            parts = line.split("\t", 1)
+            code, description = parts[0].strip(), parts[1].strip()
+        elif ";" in line:
+            parts = line.split(";", 1)
+            code, description = parts[0].strip(), parts[1].strip()
+        elif "," in line and not re.match(r"^[A-Z0-9]+,\s*[A-Z0-9]+$", line, re.I):
+            parts = line.split(",", 1)
+            code, description = parts[0].strip(), parts[1].strip()
+        else:
+            match = re.match(r"^([A-Za-z0-9\-]+)(?:\s{2,}|\s-\s|\s\|\s)(.+)$", line)
+            if match:
+                code, description = match.group(1).strip(), match.group(2).strip()
+            else:
+                tokens = line.split()
+                code = tokens[0]
+                if len(tokens) > 1:
+                    description = " ".join(tokens[1:])
+
+        code = re.sub(r"[^\w\-]", "", code).upper()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        entries.append({"code": code, "description": description})
+
+    return entries
+
+
+def format_compact_applicability(data: dict) -> tuple[bool, str, str]:
+    """Return (found, one-line result, api part description)."""
+    applications = data.get("catalog", [])
+    if not applications:
+        return False, "❌ Nenhuma aplicação encontrada", ""
+
+    lines = []
+    api_desc = ""
+
+    for cat in applications:
+        model = cat.get("description", "N/A")
+        tables = cat.get("table", [])
+        if not tables:
+            continue
+
+        table_codes = [t.get("table_code", "") for t in tables if t.get("table_code")]
+        table_descs = list(dict.fromkeys(
+            t.get("table_description", "") for t in tables if t.get("table_description")
+        ))
+        table_desc_str = table_descs[0] if len(table_descs) == 1 else " / ".join(table_descs)
+
+        part_dscs = [t.get("part_dsc", "") for t in tables if t.get("part_dsc")]
+        part_dsc = part_dscs[0] if part_dscs else ""
+        if part_dsc and not api_desc:
+            api_desc = part_dsc
+
+        if len(table_codes) == 1:
+            table_part = f"Tabela {table_codes[0]}"
+        elif len(table_codes) == 2:
+            table_part = f"Tabelas {table_codes[0]} e {table_codes[1]}"
+        elif table_codes:
+            table_part = f"Tabelas {', '.join(table_codes[:-1])} e {table_codes[-1]}"
+        else:
+            table_part = "Tabela"
+
+        desc_paren = f" ({table_desc_str})" if table_desc_str else ""
+        dsc_suffix = f" — {part_dsc}" if part_dsc else ""
+        lines.append(f"✅ {model} — {table_part}{desc_paren}{dsc_suffix}")
+
+    if not lines:
+        return False, "❌ Nenhuma aplicação encontrada", ""
+
+    result = lines[0] if len(lines) == 1 else " | ".join(lines)
+    return True, result, api_desc
+
+
+def infer_vehicle_label(vehicle_label: str, vc: str, batch_results: list) -> str:
+    """Build the compatibility report header."""
+    if vehicle_label:
+        return vehicle_label
+    for item in batch_results:
+        if item.get("found") and item.get("model"):
+            return item["model"]
+    if vc:
+        return f"Chassi {vc}"
+    return "Busca Global"
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
