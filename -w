@@ -1,0 +1,476 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta Catálogo ePER</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body { 
+            background-color: #f1f1f1; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+        }
+        
+        /* Navbar / Header */
+        .eper-navbar {
+            background-color: #005fa9;
+            color: white;
+            display: flex;
+            align-items: flex-end;
+            padding: 0 20px;
+            height: 60px;
+        }
+        .eper-logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-right: 15px;
+            letter-spacing: 1px;
+            padding-bottom: 10px;
+        }
+        .eper-header-right {
+            margin-left: auto;
+            padding-bottom: 15px;
+        }
+
+        /* Subheader */
+        .eper-subheader {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            height: 40px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #555;
+        }
+        .eper-btn-back {
+            background-color: #bf1018;
+            color: white;
+            height: 100%;
+            width: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+        }
+
+        /* Search Area */
+        .search-container {
+            padding: 30px 0;
+            background-color: #f1f1f1;
+            display: flex;
+            justify-content: center;
+        }
+        .search-box {
+            display: flex;
+            width: 100%;
+            max-width: 700px;
+            background: white;
+            border: 1px solid #005fa9;
+        }
+        .search-box input {
+            border: none;
+            padding: 10px 15px;
+            outline: none;
+            box-shadow: none;
+            border-radius: 0;
+            font-size: 0.95rem;
+        }
+        .search-box input:focus {
+            box-shadow: none;
+        }
+        .search-box .btn-search {
+            background-color: #005fa9;
+            color: white;
+            border: none;
+            border-radius: 0;
+            padding: 10px 20px;
+        }
+        .search-box .btn-search:hover {
+            background-color: #004d8a;
+        }
+
+        /* Results / Panel */
+        .eper-panel {
+            background: white;
+            margin-bottom: 25px;
+            border: 1px solid #ddd;
+        }
+        .eper-panel-header {
+            background-color: #005fa9;
+            color: white;
+            padding: 8px 15px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .eper-panel-title {
+            padding: 15px;
+            font-size: 1.1rem;
+            color: #005fa9;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #ddd;
+        }
+        .eper-panel-title i {
+            font-size: 1.4rem;
+            margin-right: 10px;
+        }
+        .eper-panel-body {
+            padding: 0;
+        }
+
+        /* Grid data */
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            font-size: 0.85rem;
+        }
+        .data-row {
+            display: flex;
+            padding: 8px 15px;
+            border-bottom: 1px solid #f1f1f1;
+        }
+        .data-label {
+            width: 40%;
+            text-align: right;
+            color: #666;
+            text-transform: uppercase;
+            margin-right: 15px;
+        }
+        .data-value {
+            width: 60%;
+            font-weight: 500;
+            color: #333;
+        }
+        .bg-light-blue { background-color: #f7fbff; }
+
+        /* Output Pre */
+        .raw-output {
+            background: #f8f9fa;
+            border: none;
+            padding: 15px;
+            font-size: 0.85rem;
+            color: #333;
+            margin: 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Product Cards */
+        .product-card {
+            background: white;
+            border: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .product-card-img-wrap {
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 160px;
+            overflow: hidden;
+            border-bottom: 1px solid #eee;
+        }
+        .product-card-img-wrap img {
+            max-height: 150px;
+            max-width: 100%;
+            object-fit: contain;
+        }
+        .product-card-body {
+            padding: 12px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .product-card-name {
+            font-size: 0.8rem;
+            color: #333;
+            font-weight: 500;
+            line-height: 1.35;
+            flex: 1;
+            margin-bottom: 10px;
+        }
+        .product-card-price-original {
+            font-size: 0.75rem;
+            color: #999;
+            text-decoration: line-through;
+            margin-bottom: 2px;
+        }
+        .product-card-price-pix {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #1a7a2e;
+            margin-bottom: 2px;
+        }
+        .product-card-price-pix-label {
+            font-size: 0.7rem;
+            color: #1a7a2e;
+            margin-bottom: 4px;
+        }
+        .product-card-installments {
+            font-size: 0.72rem;
+            color: #555;
+            margin-bottom: 12px;
+        }
+        .btn-product-actions {
+            display: flex;
+            width: 100%;
+        }
+        .btn-link-product {
+            background-color: #005fa9;
+            color: white;
+            border: none;
+            border-radius: 0;
+            padding: 8px 6px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            flex: 1;
+            text-align: center;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .btn-link-product:hover {
+            background-color: #004d8a;
+            color: white;
+        }
+        .btn-copy-product {
+            background-color: #4a4a6a;
+            color: white;
+            border: none;
+            border-left: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0;
+            padding: 8px 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            min-width: 36px;
+        }
+        .btn-copy-product:hover {
+            background-color: #36365a;
+        }
+        .btn-copy-product.copied {
+            background-color: #1a7a2e;
+        }
+        .product-unavailable {
+            font-size: 0.72rem;
+            color: #bf1018;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .no-results-msg {
+            text-align: center;
+            padding: 30px 20px;
+            color: #555;
+            font-size: 0.9rem;
+        }
+
+        /* Bulk search */
+        .bulk-search-box {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            border: 1px solid #005fa9;
+            padding: 15px;
+        }
+        .bulk-search-box textarea {
+            border: 1px solid #ddd;
+            border-radius: 0;
+            font-size: 0.9rem;
+            font-family: 'Consolas', 'Courier New', monospace;
+            resize: vertical;
+            min-height: 160px;
+        }
+        .bulk-search-box textarea:focus {
+            border-color: #005fa9;
+            box-shadow: none;
+        }
+        .bulk-hint {
+            font-size: 0.75rem;
+            color: #777;
+            margin-top: 6px;
+        }
+        .compat-table {
+            width: 100%;
+            font-size: 0.85rem;
+            margin: 0;
+        }
+        .compat-table thead th {
+            background-color: #005fa9;
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            padding: 10px 12px;
+            border: none;
+        }
+        .compat-table tbody td {
+            padding: 10px 12px;
+            vertical-align: top;
+            border-bottom: 1px solid #eee;
+        }
+        .compat-table tbody tr:nth-child(even) {
+            background-color: #f7fbff;
+        }
+        .compat-table .col-part {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-weight: 600;
+            white-space: nowrap;
+            width: 140px;
+        }
+        .compat-table .col-desc {
+            width: 180px;
+            color: #555;
+        }
+        .compat-table .col-result {
+            color: #333;
+            line-height: 1.45;
+        }
+        .compat-summary {
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-top: 1px solid #ddd;
+            font-size: 0.85rem;
+            color: #444;
+        }
+        .compat-summary .count-found {
+            color: #1a7a2e;
+            font-weight: 600;
+        }
+        .compat-summary .count-not-found {
+            color: #bf1018;
+            font-weight: 600;
+        }
+        .btn-copy-results {
+            background-color: #4a4a6a;
+            color: white;
+            border: none;
+            border-radius: 0;
+            padding: 6px 14px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-copy-results:hover {
+            background-color: #36365a;
+        }
+        .btn-copy-results.copied {
+            background-color: #1a7a2e;
+        }
+        .report-title {
+            padding: 15px;
+            font-size: 1.05rem;
+            color: #005fa9;
+            font-weight: 700;
+            border-bottom: 1px solid #ddd;
+        }
+    </style>
+    <script>
+    function copyProductLink(btn, url) {
+        navigator.clipboard.writeText(url).then(function() {
+            btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+            btn.classList.add('copied');
+            setTimeout(function() {
+                btn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                btn.classList.remove('copied');
+            }, 1500);
+        });
+    }
+    function copyCompatResults(btn) {
+        var el = document.getElementById('compat-results-text');
+        if (!el) return;
+        navigator.clipboard.writeText(el.textContent).then(function() {
+            var original = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Copiado!';
+            btn.classList.add('copied');
+            setTimeout(function() {
+                btn.innerHTML = original;
+                btn.classList.remove('copied');
+            }, 1500);
+        });
+    }
+    </script>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="eper-navbar">
+        <div class="eper-logo" style="background: #ffffff; padding: 5px 10px; border-radius: 4px; display: flex; align-items: center; margin-bottom: 8px;">
+            <img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/22449504./6ECFF29E478B05B93B2973D56786FCFE/standard_resolution.jpg" alt="Marca Seleta Logo" style="height: 48px; width: auto;">
+        </div>
+    </div>
+
+    <!-- Subheader -->
+    <div class="eper-subheader">
+        <span style="padding-left: 20px;"><i class="bi bi-car-front"></i> &raquo; BUSCA DE COMPATIBILIDADE</span>
+    </div>
+
+    <div class="container-fluid px-4">
+        
+        <!-- Search Area -->
+        <div class="search-container" style="flex-direction: column; gap: 10px;">
+            <form method="POST" class="w-100 d-flex flex-column align-items-center">
+                <div class="bulk-search-box">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label for="parts_bulk" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">CÓDIGOS DAS PEÇAS (uma por linha)</label>
+                            <textarea class="form-control" id="parts_bulk" name="parts_bulk" rows="8" placeholder="K55111314AC	Reservatório&#10;K55111354AA	Tampa&#10;K05168128AB	Barra estabilizadora&#10;K68073033AC	Haste da barra"></textarea>
+                            <div class="bulk-hint">Cole vários códigos de uma vez. Use tab, ponto-e-vírgula ou espaço para incluir a descrição opcional.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="vc" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">CHASSI (Opcional)</label>
+                            <input type="text" class="form-control mb-3" id="vc" name="vc" value="" placeholder="Ex: 9BWAA01J754038498">
+                            <label for="vehicle_label" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">VEÍCULO (Opcional)</label>
+                            <input type="text" class="form-control" id="vehicle_label" name="vehicle_label" value="" placeholder="Ex: FIAT 500 (2010–2018)">
+                            <div class="bulk-hint">Título do relatório. Se vazio, será inferido dos resultados.</div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-search"><i class="bi bi-search me-1"></i> Consultar Compatibilidade</button>
+                    </div>
+                </div>
+            </form>
+            <form method="POST" class="w-100 d-flex flex-column align-items-center">
+                <div class="d-flex w-100" style="max-width: 900px; margin-bottom: 5px;">
+                    <div style="padding-left: 5px;"><label for="name_query" class="form-label text-muted small fw-bold mb-0" style="font-size: 0.75rem;">BUSCAR POR NOME (FiatPecas.com.br)</label></div>
+                </div>
+                <div class="search-box" style="max-width: 900px;">
+                    <input type="text" class="form-control" id="name_query" name="name_query" value="" placeholder="Ex: Lâmpada pingo d'água w5w">
+                    <button type="submit" class="btn btn-search"><i class="bi bi-search"></i></button>
+                </div>
+            </form>
+        </div>
+
+        
+
+        
+
+        
+
+        
+
+        
+
+    </div>
+
+    <!-- Footer com Versão -->
+    <div style="text-align: center; padding: 20px; color: #888; font-size: 0.7rem; margin-top: 40px; border-top: 1px solid #ddd;">
+        Versão: 1.2.1 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 23/06/2026 11:30
+    </div>
+
+</body>
+</html>

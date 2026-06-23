@@ -435,6 +435,22 @@ def load_cookies() -> dict | None:
         return None
 
 
+def has_valid_cookies() -> bool:
+    """Return True if unexpired cookies exist in memory or disk cache (no login triggered)."""
+    global _cookie_memory, _cookie_memory_time
+    if _cookie_memory is not None:
+        if (time.time() - _cookie_memory_time) / 60 <= COOKIE_TTL_MINUTES:
+            return True
+    if COOKIES_FILE.exists():
+        try:
+            with open(COOKIES_FILE, "rb") as f:
+                data = pickle.load(f)
+            return (time.time() - data["time"]) / 60 <= COOKIE_TTL_MINUTES
+        except Exception:
+            pass
+    return False
+
+
 def get_cookies(force_login: bool = False, headless: bool = True) -> dict:
     """Get cookies from memory/disk cache or perform new login (thread-safe)."""
     global _cookie_memory, _cookie_memory_time

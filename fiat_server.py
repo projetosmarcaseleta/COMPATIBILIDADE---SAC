@@ -15,7 +15,7 @@ import threading
 import json
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, request, redirect, url_for
+from flask import Flask, request, redirect, url_for, jsonify
 from curl_cffi import requests as cffi_requests
 import fiat_parts_tool
 
@@ -26,6 +26,188 @@ FIATPECAS_CACHE_TTL = 300
 _fiatpecas_winning_profile = None
 _fiatpecas_cache: dict[str, tuple[float, list]] = {}
 _fiatpecas_cache_lock = threading.Lock()
+
+# ── Auth Status Tracking ────────────────────────────────────────────────────────
+# Tracks background Selenium authentication so the UI can poll progress
+# without blocking the request thread.
+_auth_bg_status: dict = {
+    "state": "idle",       # idle | loading | success | error
+    "started_at": 0.0,
+    "completed_at": 0.0,
+    "error_msg": None,
+}
+_auth_bg_lock = threading.Lock()
+
+
+def _run_auth(force: bool = False):
+    """Execute Selenium authentication and update _auth_bg_status. Run in a daemon thread."""
+    global _auth_bg_status
+    # If cookies are already valid and we're not forcing, just mark success
+    if not force and fiat_parts_tool.has_valid_cookies():
+        with _auth_bg_lock:
+            _auth_bg_status["state"] = "success"
+            _auth_bg_status["completed_at"] = time.time()
+        return
+    # Prevent concurrent logins
+    with _auth_bg_lock:
+        if _auth_bg_status["state"] == "loading":
+            return
+        _auth_bg_status["state"] = "loading"
+        _auth_bg_status["started_at"] = time.time()
+        _auth_bg_status["error_msg"] = None
+    try:
+        fiat_parts_tool.get_cookies(force_login=force, headless=True)
+        with _auth_bg_lock:
+            _auth_bg_status["state"] = "success"
+            _auth_bg_status["completed_at"] = time.time()
+        print("[AUTH] Autenticação concluída com sucesso.")
+    except Exception as e:
+        with _auth_bg_lock:
+            _auth_bg_status["state"] = "error"
+            _auth_bg_status["completed_at"] = time.time()
+            _auth_bg_status["error_msg"] = str(e)[:250]
+        print(f"[AUTH] Falha na autenticação em background: {e}")
+
+LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Consulta ePER</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f1f1f1; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; }
+        .eper-navbar { background-color: #005fa9; color: white; display: flex; align-items: flex-end; padding: 0 20px; height: 60px; }
+        .login-card { background: white; border: 1px solid #ddd; padding: 40px; max-width: 480px; width: 100%; }
+        .btn-iniciar { background-color: #005fa9; color: white; border: none; border-radius: 0; padding: 14px 40px; font-size: 1rem; font-weight: 600; width: 100%; }
+        .btn-iniciar:hover:not(:disabled) { background-color: #004d8a; color: white; }
+        .btn-iniciar:disabled { background-color: #6c9dc5; color: white; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="eper-navbar">
+        <div style="background:#ffffff;padding:5px 10px;border-radius:4px;display:flex;align-items:center;margin-bottom:8px;">
+            <img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/22449504./6ECFF29E478B05B93B2973D56786FCFE/standard_resolution.jpg" alt="Marca Seleta" style="height:48px;width:auto;">
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-center align-items-center" style="min-height:calc(100vh - 60px);padding:40px 20px;">
+        <div class="login-card">
+            <h4 class="mb-1" style="color:#005fa9;font-weight:700;">Consulta de Compatibilidade</h4>
+            <p class="text-muted mb-4" style="font-size:0.9rem;">Sistema de Consulta ePER — Peças Fiat</p>
+
+            <div id="status-area" class="mb-4" style="min-height:52px;">
+                <div class="alert alert-secondary mb-0" style="font-size:0.85rem;">
+                    <i class="bi bi-info-circle me-2"></i> Verificando status da sessão...
+                </div>
+            </div>
+
+            <button id="btn-start" class="btn btn-iniciar" disabled>
+                <span class="spinner-border spinner-border-sm me-2"></span> Verificando...
+            </button>
+
+            <div class="mt-3 text-center">
+                <a href="/" style="font-size:0.85rem;color:#888;">Ir direto para a busca &rarr;</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    var _polling = false;
+
+    function setStatus(state, msg) {
+        var cfg = {
+            success: {color:'success', icon:'bi-check-circle-fill'},
+            loading: {color:'info',    icon:'bi-arrow-repeat'},
+            error:   {color:'danger',  icon:'bi-exclamation-triangle-fill'},
+            idle:    {color:'secondary',icon:'bi-info-circle'}
+        }[state] || {color:'secondary', icon:'bi-info-circle'};
+        document.getElementById('status-area').innerHTML =
+            '<div class="alert alert-' + cfg.color + ' mb-0" style="font-size:0.85rem;">' +
+            '<i class="bi ' + cfg.icon + ' me-2"></i>' + msg + '</div>';
+    }
+
+    function setBtnReady(label, action) {
+        var btn = document.getElementById('btn-start');
+        btn.disabled = false;
+        btn.innerHTML = label;
+        btn.onclick = action;
+    }
+
+    function startAuth() {
+        var btn = document.getElementById('btn-start');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Conectando ao portal Fiat...';
+        setStatus('loading', 'Iniciando autenticação com o portal Fiat. Redirecionando para a busca...');
+        fetch('/api/auth/start', {method:'POST'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.state === 'success') {
+                    setStatus('success', 'Sessão ativa! Redirecionando...');
+                } else {
+                    setStatus('loading', 'Autenticação iniciada em segundo plano. Você já pode usar a busca.');
+                }
+                setTimeout(function() { window.location.href = '/'; }, 900);
+            })
+            .catch(function() {
+                setTimeout(function() { window.location.href = '/'; }, 1200);
+            });
+    }
+
+    function pollUntilReady() {
+        if (_polling) return;
+        _polling = true;
+        (function tick() {
+            setTimeout(function() {
+                fetch('/api/auth/status')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.state === 'success') {
+                            _polling = false;
+                            setStatus('success', 'Autenticação concluída! Redirecionando...');
+                            setTimeout(function() { window.location.href = '/'; }, 800);
+                        } else if (data.state === 'error') {
+                            _polling = false;
+                            setStatus('error', 'Falha: ' + (data.error_msg || 'Erro desconhecido'));
+                            setBtnReady('<i class="bi bi-arrow-clockwise me-2"></i> Tentar Novamente', startAuth);
+                        } else {
+                            tick();
+                        }
+                    })
+                    .catch(tick);
+            }, 3000);
+        })();
+    }
+
+    fetch('/api/auth/status')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.state === 'success') {
+                setStatus('success', 'Sessão ativa. Você já pode usar a busca.');
+                setBtnReady('<i class="bi bi-arrow-right me-2"></i> Ir para a Busca', function() { window.location.href = '/'; });
+            } else if (data.state === 'loading') {
+                setStatus('loading', 'Autenticação em andamento em segundo plano...');
+                var btn = document.getElementById('btn-start');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Aguardando autenticação...';
+                pollUntilReady();
+            } else {
+                setStatus('idle', 'Clique no botão abaixo para autenticar e acessar o sistema.');
+                setBtnReady('<i class="bi bi-box-arrow-in-right me-2"></i> Iniciar Sessão', startAuth);
+            }
+        })
+        .catch(function() {
+            setStatus('idle', 'Clique em "Iniciar Sessão" para começar.');
+            setBtnReady('<i class="bi bi-box-arrow-in-right me-2"></i> Iniciar Sessão', startAuth);
+        });
+    </script>
+</body>
+</html>
+"""
+
+LOGIN_TEMPLATE_COMPILED = app.jinja_env.from_string(LOGIN_TEMPLATE)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -496,7 +678,7 @@ HTML_TEMPLATE = """
 
         {% if error %}
         <div class="alert alert-danger mx-auto" style="max-width: 900px;" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error }}
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error | safe }}
         </div>
         {% endif %}
 
@@ -612,8 +794,69 @@ Peça	Descrição	Resultado
 
     <!-- Footer com Versão -->
     <div style="text-align: center; padding: 20px; color: #888; font-size: 0.7rem; margin-top: 40px; border-top: 1px solid #ddd;">
-        Versão: 1.2.1 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 23/06/2026 11:30
+        Versão: 1.3.0 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 23/06/2026 15:00
     </div>
+
+    <!-- Auth Status Banner (fixed bottom, shown by JS while Selenium login runs in background) -->
+    <div id="auth-status-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:1050;background:#cfe2ff;border-top:2px solid #9ec5fe;padding:10px 20px;">
+        <div class="d-flex align-items-center" style="max-width:960px;margin:0 auto;gap:12px;">
+            <span class="spinner-border spinner-border-sm flex-shrink-0" id="auth-banner-spinner" style="color:#0a58ca;"></span>
+            <span id="auth-banner-msg" style="font-size:0.85rem;color:#084298;flex:1;">Autenticação em andamento. A busca estará disponível em breve...</span>
+            <a href="/login" style="background:#005fa9;color:white;border-radius:0;font-size:0.78rem;padding:4px 12px;text-decoration:none;white-space:nowrap;flex-shrink:0;">Ver status</a>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var banner = document.getElementById('auth-status-banner');
+        var msg    = document.getElementById('auth-banner-msg');
+        var spin   = document.getElementById('auth-banner-spinner');
+
+        function showError(text) {
+            if (!banner) return;
+            banner.style.background = '#f8d7da';
+            banner.style.borderTopColor = '#f5c2c7';
+            if (spin) spin.style.display = 'none';
+            if (msg) msg.innerHTML = text;
+            banner.style.display = 'block';
+        }
+
+        function pollUntilDone() {
+            setTimeout(function() {
+                fetch('/api/auth/status')
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        if (d.state === 'success') {
+                            if (banner) {
+                                banner.style.background = '#d1e7dd';
+                                banner.style.borderTopColor = '#a3cfbb';
+                                if (spin) spin.style.display = 'none';
+                                if (msg) msg.textContent = 'Sessão autenticada! Você já pode realizar buscas.';
+                                setTimeout(function() { banner.style.display = 'none'; }, 4000);
+                            }
+                        } else if (d.state === 'error') {
+                            showError('Falha na autenticação. <a href="/login" style="color:#842029;font-weight:600;">Clique aqui para renovar a sessão.</a>');
+                        } else {
+                            pollUntilDone();
+                        }
+                    })
+                    .catch(pollUntilDone);
+            }, 4000);
+        }
+
+        fetch('/api/auth/status')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.state === 'loading') {
+                    if (banner) banner.style.display = 'block';
+                    pollUntilDone();
+                } else if (d.state === 'error') {
+                    showError('Sessão não autenticada. <a href="/login" style="color:#842029;font-weight:600;">Clique aqui para iniciar sessão.</a>');
+                }
+            })
+            .catch(function() {});
+    })();
+    </script>
 
 </body>
 </html>
@@ -745,37 +988,57 @@ def search_fiatpecas(part_code):
 
 
 def refresh_session_loop():
-    """Background task: tenta login inicial após 10s, depois renova a cada 6 horas."""
-    # Primeiro login: espera 10s para o Flask já estar respondendo
+    """Background task: initial login after 10s, then refresh every 6 hours."""
     time.sleep(10)
-    try:
-        print("[BACKGROUND] Tentando login inicial...")
-        fiat_parts_tool.get_cookies(headless=True)
-        print("[BACKGROUND] Login inicial bem-sucedido!")
-    except Exception as e:
-        print(f"[BACKGROUND] Login inicial falhou: {e}")
-        print("[BACKGROUND] Cookies serao obtidos na primeira busca do usuario.")
-
-    # Renovação periódica a cada 6 horas
+    print("[BACKGROUND] Iniciando autenticação inicial...")
+    _run_auth(force=False)
     while True:
         time.sleep(6 * 60 * 60)
-        try:
-            print("[BACKGROUND] Iniciando renovação automática de cookies...")
-            fiat_parts_tool.get_cookies(force_login=True, headless=True)
-            print("[BACKGROUND] Cookies renovados com sucesso!")
-        except Exception as e:
-            print(f"[BACKGROUND] Erro ao renovar cookies: {e}")
+        print("[BACKGROUND] Renovando cookies automaticamente...")
+        _run_auth(force=True)
 
 @app.route("/refresh", methods=["POST"])
 def refresh():
     try:
         print("[WEB] Renovação manual de sessão solicitada...")
         fiat_parts_tool.get_cookies(force_login=True, headless=True)
-        # We pass a success flag in the URL parameter via redirect
         return redirect(url_for('index', refreshed='success'))
     except Exception as e:
         print(f"[WEB] Falha na renovacao manual: {e}")
         return redirect(url_for('index', refreshed='error', errmsg=str(e)[:100]))
+
+
+@app.route("/api/auth/status", methods=["GET"])
+def api_auth_status():
+    """Return current authentication status as JSON (non-blocking)."""
+    if fiat_parts_tool.has_valid_cookies():
+        return jsonify({"state": "success", "has_cookies": True})
+    with _auth_bg_lock:
+        status = dict(_auth_bg_status)
+    status["has_cookies"] = False
+    return jsonify(status)
+
+
+@app.route("/api/auth/start", methods=["POST"])
+def api_auth_start():
+    """Start background Selenium authentication without blocking. Returns immediately."""
+    if fiat_parts_tool.has_valid_cookies():
+        return jsonify({"state": "success", "message": "Sessão já ativa."})
+    with _auth_bg_lock:
+        already_running = _auth_bg_status["state"] == "loading"
+    if not already_running:
+        t = threading.Thread(target=lambda: _run_auth(force=False), daemon=True)
+        t.start()
+        message = "Autenticação iniciada em segundo plano."
+    else:
+        message = "Autenticação já em andamento."
+    return jsonify({"state": "loading", "message": message})
+
+
+@app.route("/login", methods=["GET"])
+def login_page():
+    """Login splash page — triggers async Selenium auth and lets user navigate immediately."""
+    return LOGIN_TEMPLATE_COMPILED.render()
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -805,6 +1068,13 @@ def index():
             entries = fiat_parts_tool.parse_bulk_parts(parts_bulk)
             if not entries:
                 error_text = "Nenhum código de peça válido encontrado no texto informado."
+            elif not fiat_parts_tool.has_valid_cookies():
+                with _auth_bg_lock:
+                    auth_state = _auth_bg_status["state"]
+                if auth_state == "loading":
+                    error_text = "⏳ Autenticação em andamento. Aguarde alguns segundos e tente novamente."
+                else:
+                    error_text = '⚠️ Sessão não iniciada. <a href="/login" class="alert-link">Clique aqui</a> para autenticar antes de pesquisar.'
             else:
                 chassis = vc if vc else None
                 batch_start = time.time()
