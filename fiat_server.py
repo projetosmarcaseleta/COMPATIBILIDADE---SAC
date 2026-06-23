@@ -589,6 +589,38 @@ HTML_TEMPLATE = """
             font-weight: 700;
             border-bottom: 1px solid #ddd;
         }
+
+        /* ── Redesign: Result Table ─────────────────────────── */
+        .col-status { width: 34px; text-align: center; padding: 10px 6px !important; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .status-dot.found     { background: #1a7a2e; box-shadow: 0 0 0 2px #d1e7dd; }
+        .status-dot.not-found { background: #bf1018; box-shadow: 0 0 0 2px #f8d7da; }
+        .found-row     { border-left: 3px solid #1a7a2e; }
+        .not-found-row { border-left: 3px solid #bf1018; }
+        .found-row:hover, .not-found-row:hover { background-color: #f0f6ff !important; }
+        .compat-table .col-model { width: 160px; font-size: 0.82rem; color: #444; }
+
+        /* Summary strip */
+        .result-summary-strip { padding: 10px 15px; background: #f8f9fa; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .stat-badge { font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+        .stat-badge.total     { background: #e2e3e5; color: #41464b; }
+        .stat-badge.found     { background: #d1e7dd; color: #0f5132; }
+        .stat-badge.not-found { background: #f8d7da; color: #842029; }
+
+        /* Progress bar */
+        .found-progress-wrap { height: 4px; background: #e9ecef; }
+        .found-progress-bar  { height: 100%; background: linear-gradient(90deg, #1a7a2e, #2da84e); }
+
+        /* Filter bar */
+        .compat-filter-bar { padding: 10px 15px; background: #f0f6ff; border-bottom: 1px solid #d0d9e8; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .compat-filter-input { border: 1px solid #b0c4de; padding: 5px 10px; font-size: 0.82rem; flex: 1; min-width: 180px; max-width: 340px; border-radius: 0; outline: none; }
+        .compat-filter-input:focus { border-color: #005fa9; }
+        .toggle-errors-btn { font-size: 0.78rem; padding: 5px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 0; color: #555; white-space: nowrap; }
+        .toggle-errors-btn.active { background: #bf1018; color: white; border-color: #bf1018; }
+
+        /* Scrollable table body */
+        .table-scroll-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+        .table-scroll-wrap thead th { position: sticky; top: 0; z-index: 5; }
     </style>
     <script>
     function copyProductLink(btn, url) {
@@ -613,6 +645,27 @@ HTML_TEMPLATE = """
                 btn.classList.remove('copied');
             }, 1500);
         });
+    }
+    function filterCompatTable() {
+        var q = (document.getElementById('compat-filter') || {}).value || '';
+        q = q.toLowerCase();
+        var errorsOnly = (document.getElementById('toggle-errors-btn') || {}).classList &&
+                         document.getElementById('toggle-errors-btn').classList.contains('active');
+        var rows = document.querySelectorAll('#compat-table tbody tr');
+        var visible = 0;
+        rows.forEach(function(row) {
+            var matchText  = !q || row.textContent.toLowerCase().includes(q);
+            var matchErr   = !errorsOnly || row.getAttribute('data-found') === 'true';
+            if (matchText && matchErr) { row.style.display = ''; visible++; }
+            else { row.style.display = 'none'; }
+        });
+        var el = document.getElementById('filter-row-count');
+        if (el) el.textContent = (q || errorsOnly) ? (visible + ' de ' + rows.length + ' linhas') : '';
+    }
+    function toggleErrorsOnly() {
+        var btn = document.getElementById('toggle-errors-btn');
+        if (btn) btn.classList.toggle('active');
+        filterCompatTable();
     }
     </script>
 </head>
@@ -683,48 +736,90 @@ HTML_TEMPLATE = """
         {% endif %}
 
         {% if batch_results %}
-        <div class="mx-auto" style="max-width: 1200px;">
+        <div class="mx-auto" style="max-width: 1280px;">
             <div class="eper-panel mt-2">
+
+                <!-- Cabeçalho do painel -->
                 <div class="eper-panel-header d-flex justify-content-between align-items-center">
-                    <span>Resultado de Compatibilidade</span>
+                    <span><i class="bi bi-clipboard-data me-1"></i> Resultado de Compatibilidade</span>
                     <button type="button" class="btn-copy-results" onclick="copyCompatResults(this)"><i class="bi bi-clipboard"></i> Copiar relatório</button>
                 </div>
-                <div class="report-title">Resultado de Compatibilidade — {{ report_title }}</div>
-                <div class="eper-panel-body">
-                    <table class="table compat-table mb-0">
+
+                <!-- Faixa de resumo com badges e barra de progresso -->
+                <div class="result-summary-strip">
+                    <span style="font-weight:700;color:#005fa9;font-size:0.92rem;">{{ report_title }}</span>
+                    <div class="d-flex gap-2 ms-auto flex-wrap">
+                        <span class="stat-badge total"><i class="bi bi-list-ul me-1"></i>{{ batch_results|length }} peças</span>
+                        <span class="stat-badge found"><i class="bi bi-check-circle me-1"></i>{{ found_count }} encontradas</span>
+                        {% if not_found_count > 0 %}
+                        <span class="stat-badge not-found"><i class="bi bi-x-circle me-1"></i>{{ not_found_count }} sem resultado</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="found-progress-wrap">
+                    <div class="found-progress-bar" style="width:{{ (found_count / batch_results|length * 100)|round|int }}%"></div>
+                </div>
+
+                <!-- Barra de filtros -->
+                <div class="compat-filter-bar">
+                    <i class="bi bi-search text-muted" style="font-size:0.82rem;"></i>
+                    <input type="text" id="compat-filter" class="compat-filter-input"
+                           placeholder="Filtrar por código, descrição ou modelo..."
+                           oninput="filterCompatTable()">
+                    <button id="toggle-errors-btn" class="toggle-errors-btn" onclick="toggleErrorsOnly()">
+                        <i class="bi bi-check-circle me-1"></i> Apenas sem erro
+                    </button>
+                    <span id="filter-row-count" style="font-size:0.75rem;color:#888;margin-left:auto;"></span>
+                </div>
+
+                <!-- Tabela com cabeçalho fixo e scroll vertical -->
+                <div class="table-scroll-wrap">
+                    <table class="table compat-table mb-0" id="compat-table">
                         <thead>
                             <tr>
+                                <th class="col-status" title="Status"></th>
                                 <th class="col-part">Peça</th>
                                 <th class="col-desc">Descrição</th>
-                                <th class="col-result">Resultado</th>
+                                <th class="col-model">Modelo</th>
+                                <th class="col-result">Compatibilidade</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for row in batch_results %}
-                            <tr>
+                            <tr class="{{ 'found-row' if row.found else 'not-found-row' }}"
+                                data-found="{{ 'true' if row.found else 'false' }}">
+                                <td class="col-status">
+                                    <span class="status-dot {{ 'found' if row.found else 'not-found' }}"
+                                          title="{{ 'Compatível' if row.found else 'Sem resultado' }}"></span>
+                                </td>
                                 <td class="col-part">{{ row.code }}</td>
                                 <td class="col-desc">{{ row.description or '—' }}</td>
+                                <td class="col-model">{{ row.model or '—' }}</td>
                                 <td class="col-result">{{ row.result }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
-                    <div class="compat-summary">
-                        <span class="count-found">{{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação</span>
-                        /
-                        <span class="count-not-found">{{ not_found_count }} sem resultado no catálogo</span>
-                        {% if not_found_codes %}
-                        ({{ not_found_codes | join(', ') }}).
-                        {% else %}
-                        .
-                        {% endif %}
-                    </div>
+                </div>
+
+                <!-- Rodapé de resumo -->
+                <div class="compat-summary">
+                    <span class="count-found">{{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação</span>
+                    /
+                    <span class="count-not-found">{{ not_found_count }} sem resultado no catálogo</span>
+                    {% if not_found_codes %}
+                    — sem resultado: {{ not_found_codes | join(', ') }}.
+                    {% else %}
+                    .
+                    {% endif %}
                 </div>
             </div>
+
+            <!-- Texto oculto para cópia (inclui coluna Modelo) -->
             <pre id="compat-results-text" style="display:none;">Resultado de Compatibilidade — {{ report_title }}
 
-Peça	Descrição	Resultado
-{% for row in batch_results %}{{ row.code }}	{{ row.description or '—' }}	{{ row.result }}
+Peça	Descrição	Modelo	Resultado
+{% for row in batch_results %}{{ row.code }}	{{ row.description or '—' }}	{{ row.model or '—' }}	{{ row.result }}
 {% endfor %}
 {{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação / {{ not_found_count }} sem resultado no catálogo{% if not_found_codes %} ({{ not_found_codes | join(', ') }}){% endif %}.</pre>
         </div>
