@@ -66,14 +66,16 @@ HEADERS = {
     ),
 }
 
-API_TIMEOUT = (5, 20)
-RESULT_CACHE_TTL_SECONDS = 3600
-BATCH_MAX_WORKERS = 5
+API_CONNECT_TIMEOUT = int(os.environ.get("EPER_CONNECT_TIMEOUT", "10"))
+API_READ_TIMEOUT = int(os.environ.get("EPER_READ_TIMEOUT", "60"))
+API_TIMEOUT = (API_CONNECT_TIMEOUT, API_READ_TIMEOUT)
+RESULT_CACHE_TTL_SECONDS = int(os.environ.get("EPER_CACHE_TTL", "3600"))
+BATCH_MAX_WORKERS = int(os.environ.get("EPER_BATCH_WORKERS", "3"))
 
-_login_lock = threading.Lock()
+_login_lock = threading.RLock()
 _cookie_memory: dict | None = None
 _cookie_memory_time: float = 0
-_api_session: requests.Session | None = None
+_thread_local = threading.local()
 _result_cache: dict[tuple[str, str], tuple[float, dict]] = {}
 _result_cache_lock = threading.Lock()
 
@@ -458,14 +460,23 @@ def get_cookies(force_login: bool = False, headless: bool = True) -> dict:
 # ── API Client ─────────────────────────────────────────────────────────────────
 
 def _get_api_session() -> requests.Session:
-    global _api_session
-    if _api_session is None:
+    """Return a thread-local requests.Session (safe for parallel batch queries)."""
+    session = getattr(_thread_local, "session", None)
+    if session is None:
         session = requests.Session()
         session.headers.update(HEADERS)
-        adapter = HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=0)
+        adapter = HTTPAdapter(pool_connections=5, pool_maxsize=5, max_retries=0)
         session.mount("https://", adapter)
-        _api_session = session
-    return _api_session
+        _thread_local.session = session
+    return session
+
+
+def _refresh_cookies(headless: bool = True) -> dict:
+    """Force a new login and return fresh cookies (thread-safe)."""
+    with _login_lock:
+        cookies = login_and_get_cookies(headless=headless)
+        save_cookies(cookies)
+        return cookies.copy()
 
 
 def _result_cache_key(part_number: str, vc: str | None) -> tuple[str, str]:
@@ -504,7 +515,9 @@ def query_part_applicability(
     try:
         response = session.get(url, params=params, timeout=API_TIMEOUT, cookies=cookies or {})
     except requests.Timeout:
-        raise TimeoutError(f"Timeout ao consultar peça {part_number}")
+        raise TimeoutError(f"Timeout ao consultar peça {part_number} (limite {API_READ_TIMEOUT}s)")
+    except requests.RequestException as e:
+        raise ConnectionError(f"Erro de rede ao consultar peça {part_number}: {e}") from e
 
     if response.status_code == 401 or "Unauthorized" in response.text:
         return None
@@ -542,9 +555,8 @@ def query_with_retry(
 
     if result is None:
         print("Sessao expirada. Realizando novo login...")
-        with _login_lock:
-            cookies = get_cookies(force_login=True, headless=headless)
-            result = query_part_applicability(part_number, vc, cookies, session)
+        cookies = _refresh_cookies(headless=headless)
+        result = query_part_applicability(part_number, vc, cookies, session)
 
         if result is None:
             print("Falha na autenticacao mesmo apos novo login.")
@@ -598,40 +610,52 @@ def query_batch(
     entries: list[dict],
     vc: str = None,
     headless: bool = True,
-    max_workers: int = BATCH_MAX_WORKERS,
+    max_workers: int | None = None,
 ) -> list[dict]:
     """Query multiple parts in parallel, preserving input order."""
     if not entries:
         return []
 
+    workers = max_workers if max_workers is not None else BATCH_MAX_WORKERS
+    batch_start = time.time()
     cookies = get_cookies(headless=headless)
-    session = _get_api_session()
 
     unique_codes = list(dict.fromkeys(e["code"] for e in entries))
     results_by_code: dict[str, dict | None] = {}
     auth_failed: list[str] = []
     errors_by_code: dict[str, str] = {}
+    cache_hits = 0
+    timings: dict[str, float] = {}
 
     def _fetch(code: str):
+        t0 = time.time()
         cached = _get_cached_result(code, vc)
         if cached is not None:
-            return code, cached, None, False
+            timings[code] = time.time() - t0
+            return code, cached, None, False, True
 
         try:
+            session = _get_api_session()
             data = query_part_applicability(code, vc, cookies, session)
             if data is None:
-                return code, None, None, True
+                timings[code] = time.time() - t0
+                return code, None, None, True, False
             _set_cached_result(code, vc, data)
-            return code, data, None, False
+            timings[code] = time.time() - t0
+            return code, data, None, False, False
         except TimeoutError as e:
-            return code, None, str(e), False
+            timings[code] = time.time() - t0
+            return code, None, str(e), False, False
         except Exception as e:
-            return code, None, str(e), False
+            timings[code] = time.time() - t0
+            return code, None, str(e), False, False
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(_fetch, code) for code in unique_codes]
         for future in as_completed(futures):
-            code, data, err, need_auth = future.result()
+            code, data, err, need_auth, from_cache = future.result()
+            if from_cache:
+                cache_hits += 1
             if need_auth:
                 auth_failed.append(code)
             elif err:
@@ -639,20 +663,32 @@ def query_batch(
             results_by_code[code] = data
 
     if auth_failed:
-        with _login_lock:
-            fresh_cookies = get_cookies(force_login=True, headless=headless)
-            for code in auth_failed:
-                try:
-                    data = query_part_applicability(code, vc, fresh_cookies, session)
-                    if data is None:
-                        errors_by_code[code] = "Falha na autenticacao"
-                        results_by_code[code] = None
-                    else:
-                        _set_cached_result(code, vc, data)
-                        results_by_code[code] = data
-                except Exception as e:
-                    errors_by_code[code] = str(e)
+        print(f"[BATCH] Re-autenticando para {len(auth_failed)} peca(s)...")
+        fresh_cookies = _refresh_cookies(headless=headless)
+        for code in auth_failed:
+            t0 = time.time()
+            try:
+                session = _get_api_session()
+                data = query_part_applicability(code, vc, fresh_cookies, session)
+                if data is None:
+                    errors_by_code[code] = "Falha na autenticacao"
                     results_by_code[code] = None
+                else:
+                    _set_cached_result(code, vc, data)
+                    results_by_code[code] = data
+            except Exception as e:
+                errors_by_code[code] = str(e)
+                results_by_code[code] = None
+            timings[code] = time.time() - t0
+
+    elapsed = time.time() - batch_start
+    avg = sum(timings.values()) / len(timings) if timings else 0
+    slowest = max(timings.items(), key=lambda x: x[1]) if timings else ("", 0)
+    print(
+        f"[BATCH] {len(entries)} peca(s) em {elapsed:.1f}s | "
+        f"workers={workers} | cache={cache_hits} | "
+        f"media={avg:.1f}s | mais lenta={slowest[0]} ({slowest[1]:.1f}s)"
+    )
 
     return [
         _build_batch_row(entry, results_by_code.get(entry["code"]), errors_by_code.get(entry["code"]))

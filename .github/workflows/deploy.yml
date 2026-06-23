@@ -44,7 +44,16 @@ jobs:
           source venv/bin/activate
           pip install -r requirements.txt -q
 
+          echo "=== Atualizando nginx (timeouts) ==="
+          if [ -f nginx_fiat_parts.conf ]; then
+            cp nginx_fiat_parts.conf /etc/nginx/sites-available/fiat_parts 2>/dev/null || true
+            nginx -t && systemctl reload nginx || echo "AVISO: nginx nao recarregado"
+          fi
+
           echo "=== Reiniciando PM2 ==="
+          export EPER_READ_TIMEOUT=60
+          export EPER_BATCH_WORKERS=3
+          export WAITRESS_CHANNEL_TIMEOUT=300
           pm2 delete fiat-eper 2>/dev/null || true
           pm2 start fiat_server.py \
             --name fiat-eper \

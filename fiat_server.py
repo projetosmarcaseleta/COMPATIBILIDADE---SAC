@@ -612,7 +612,7 @@ Peça	Descrição	Resultado
 
     <!-- Footer com Versão -->
     <div style="text-align: center; padding: 20px; color: #888; font-size: 0.7rem; margin-top: 40px; border-top: 1px solid #ddd;">
-        Versão: 1.2.0 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 15/06/2026 11:30
+        Versão: 1.2.1 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 23/06/2026 11:30
     </div>
 
 </body>
@@ -807,8 +807,10 @@ def index():
                 error_text = "Nenhum código de peça válido encontrado no texto informado."
             else:
                 chassis = vc if vc else None
+                batch_start = time.time()
                 print(f"WEB: Consultando {len(entries)} peca(s) em lote" + (f" para chassi {chassis}" if chassis else ""))
                 batch_results = fiat_parts_tool.query_batch(entries, chassis, headless=True)
+                print(f"WEB: Lote concluido em {time.time() - batch_start:.1f}s")
 
                 found_count = sum(1 for r in batch_results if r["found"])
                 not_found_count = len(batch_results) - found_count
@@ -854,8 +856,9 @@ if __name__ == "__main__":
     if use_waitress:
         from waitress import serve
         threads = int(os.environ.get("WAITRESS_THREADS", "8"))
-        print(f"[INFO] Waitress em http://{host}:{port} ({threads} threads)")
-        serve(app, host=host, port=port, threads=threads)
+        channel_timeout = int(os.environ.get("WAITRESS_CHANNEL_TIMEOUT", "300"))
+        print(f"[INFO] Waitress em http://{host}:{port} ({threads} threads, timeout={channel_timeout}s)")
+        serve(app, host=host, port=port, threads=threads, channel_timeout=channel_timeout)
     else:
         print(f"[INFO] Flask dev em http://{host}:{port} (threaded)")
         app.run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
