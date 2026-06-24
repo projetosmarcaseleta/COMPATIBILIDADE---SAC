@@ -15,8 +15,19 @@ pip install -r requirements.txt -q
 
 echo "=== Nginx ==="
 if [ -f nginx_fiat_parts.conf ]; then
-  cp nginx_fiat_parts.conf /etc/nginx/sites-available/fiat_parts 2>/dev/null || true
-  nginx -t && systemctl reload nginx || echo "AVISO: nginx nao recarregado"
+  # Copia para sites-available
+  cp nginx_fiat_parts.conf /etc/nginx/sites-available/fiat_parts
+  # Garante que sites-enabled tambem esta atualizado (arquivo direto ou symlink)
+  if [ -L /etc/nginx/sites-enabled/fiat_parts ]; then
+    echo "sites-enabled/fiat_parts eh symlink, sites-available atualizado."
+  elif [ -f /etc/nginx/sites-enabled/fiat_parts ]; then
+    cp nginx_fiat_parts.conf /etc/nginx/sites-enabled/fiat_parts
+    echo "sites-enabled/fiat_parts atualizado diretamente."
+  else
+    ln -sf /etc/nginx/sites-available/fiat_parts /etc/nginx/sites-enabled/fiat_parts
+    echo "Symlink sites-enabled/fiat_parts criado."
+  fi
+  nginx -t && nginx -s reload && echo "Nginx recarregado com sucesso." || echo "AVISO: nginx -t falhou, config nao aplicada"
 fi
 
 echo "=== PM2 ==="
