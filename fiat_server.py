@@ -109,7 +109,7 @@ LOGIN_TEMPLATE = """
             </button>
 
             <div class="mt-3 text-center">
-                <a href="/" style="font-size:0.85rem;color:#888;">Ir direto para a busca &rarr;</a>
+                <a href="/compatibilidade/" style="font-size:0.85rem;color:#888;">Ir direto para a busca &rarr;</a>
             </div>
         </div>
     </div>
@@ -149,10 +149,10 @@ LOGIN_TEMPLATE = """
                 } else {
                     setStatus('loading', 'Autenticação iniciada em segundo plano. Você já pode usar a busca.');
                 }
-                setTimeout(function() { window.location.href = '/'; }, 900);
+                setTimeout(function() { window.location.href = '/compatibilidade/'; }, 900);
             })
             .catch(function() {
-                setTimeout(function() { window.location.href = '/'; }, 1200);
+                setTimeout(function() { window.location.href = '/compatibilidade/'; }, 1200);
             });
     }
 
@@ -167,7 +167,7 @@ LOGIN_TEMPLATE = """
                         if (data.state === 'success') {
                             _polling = false;
                             setStatus('success', 'Autenticação concluída! Redirecionando...');
-                            setTimeout(function() { window.location.href = '/'; }, 800);
+                            setTimeout(function() { window.location.href = '/compatibilidade/'; }, 800);
                         } else if (data.state === 'error') {
                             _polling = false;
                             setStatus('error', 'Falha: ' + (data.error_msg || 'Erro desconhecido'));
@@ -186,7 +186,7 @@ LOGIN_TEMPLATE = """
         .then(function(data) {
             if (data.state === 'success') {
                 setStatus('success', 'Sessão ativa. Você já pode usar a busca.');
-                setBtnReady('<i class="bi bi-arrow-right me-2"></i> Ir para a Busca', function() { window.location.href = '/'; });
+                setBtnReady('<i class="bi bi-arrow-right me-2"></i> Ir para a Busca', function() { window.location.href = '/compatibilidade/'; });
             } else if (data.state === 'loading') {
                 setStatus('loading', 'Autenticação em andamento em segundo plano...');
                 var btn = document.getElementById('btn-start');

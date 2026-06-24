@@ -1,0 +1,32 @@
+[INFO] Iniciando daemon de background para login e renovacao automatica...
+[INFO] Flask dev em http://127.0.0.1:5002 (threaded)
+ * Serving Flask app 'fiat_server'
+ * Debug mode: off
+WEB: Consultando 1 peca(s) em lote
+Reutilizando cookies em cache (38 min de idade)
+[BATCH] 1 peca(s) em 0.7s | workers=3 | cache=0 | media=0.7s | mais lenta=55273432 (0.7s)
+WEB: Lote concluido em 0.7s
+[FIATPECAS] Sucesso com impersonate='chrome124'
+[FIATPECAS] 2 produto(s) encontrado(s) para '55273432'
+[BACKGROUND] Iniciando autenticação inicial...
+WEB: Consultando 1 peca(s) em lote
+[BATCH] 1 peca(s) em 0.0s | workers=3 | cache=1 | media=0.0s | mais lenta=55273432 (0.0s)
+WEB: Lote concluido em 0.0s
+WEB: Consultando 5 peca(s) em lote
+[BATCH] 5 peca(s) em 1.5s | workers=3 | cache=0 | media=0.9s | mais lenta=K55111354AA (1.4s)
+WEB: Lote concluido em 1.5s
+WEB: Consultando 14 peca(s) em lote
+[BATCH] 14 peca(s) em 1.7s | workers=3 | cache=4 | media=0.4s | mais lenta=K68083938AB (1.6s)
+WEB: Lote concluido em 1.7s
+WEB: Consultando 14 peca(s) em lote
+[BATCH] 14 peca(s) em 0.0s | workers=3 | cache=14 | media=0.0s | mais lenta=K55111314AC (0.0s)
+WEB: Lote concluido em 0.0s
+WEB: Consultando 14 peca(s) em lote
+[BATCH] 14 peca(s) em 0.0s | workers=3 | cache=14 | media=0.0s | mais lenta=K55111314AC (0.0s)
+WEB: Lote concluido em 0.0s
+WEB: Consultando 14 peca(s) em lote
+[BATCH] 14 peca(s) em 0.0s | workers=3 | cache=14 | media=0.0s | mais lenta=K55111314AC (0.0s)
+WEB: Lote concluido em 0.0s
+WEB: Consultando 14 peca(s) em lote
+[BATCH] 14 peca(s) em 0.0s | workers=3 | cache=14 | media=0.0s | mais lenta=K68073033AC (0.0s)
+WEB: Lote concluido em 0.0s
