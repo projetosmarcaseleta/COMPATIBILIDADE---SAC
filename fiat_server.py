@@ -141,7 +141,7 @@ LOGIN_TEMPLATE = """
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Conectando ao portal Fiat...';
         setStatus('loading', 'Iniciando autenticação com o portal Fiat. Redirecionando para a busca...');
-        fetch('/api/auth/start', {method:'POST'})
+        fetch('/compatibilidade/api/auth/start', {method:'POST'})
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.state === 'success') {
@@ -161,7 +161,7 @@ LOGIN_TEMPLATE = """
         _polling = true;
         (function tick() {
             setTimeout(function() {
-                fetch('/api/auth/status')
+                fetch('/compatibilidade/api/auth/status')
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.state === 'success') {
@@ -181,7 +181,7 @@ LOGIN_TEMPLATE = """
         })();
     }
 
-    fetch('/api/auth/status')
+    fetch('/compatibilidade/api/auth/status')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.state === 'success') {
@@ -897,7 +897,7 @@ Peça	Descrição	Modelo	Resultado
         <div class="d-flex align-items-center" style="max-width:960px;margin:0 auto;gap:12px;">
             <span class="spinner-border spinner-border-sm flex-shrink-0" id="auth-banner-spinner" style="color:#0a58ca;"></span>
             <span id="auth-banner-msg" style="font-size:0.85rem;color:#084298;flex:1;">Autenticação em andamento. A busca estará disponível em breve...</span>
-            <a href="/login" style="background:#005fa9;color:white;border-radius:0;font-size:0.78rem;padding:4px 12px;text-decoration:none;white-space:nowrap;flex-shrink:0;">Ver status</a>
+            <a href="/compatibilidade/login" style="background:#005fa9;color:white;border-radius:0;font-size:0.78rem;padding:4px 12px;text-decoration:none;white-space:nowrap;flex-shrink:0;">Ver status</a>
         </div>
     </div>
 
@@ -918,7 +918,7 @@ Peça	Descrição	Modelo	Resultado
 
         function pollUntilDone() {
             setTimeout(function() {
-                fetch('/api/auth/status')
+                fetch('/compatibilidade/api/auth/status')
                     .then(function(r) { return r.json(); })
                     .then(function(d) {
                         if (d.state === 'success') {
@@ -930,7 +930,7 @@ Peça	Descrição	Modelo	Resultado
                                 setTimeout(function() { banner.style.display = 'none'; }, 4000);
                             }
                         } else if (d.state === 'error') {
-                            showError('Falha na autenticação. <a href="/login" style="color:#842029;font-weight:600;">Clique aqui para renovar a sessão.</a>');
+                            showError('Falha na autenticação. <a href="/compatibilidade/login" style="color:#842029;font-weight:600;">Clique aqui para renovar a sessão.</a>');
                         } else {
                             pollUntilDone();
                         }
@@ -939,14 +939,14 @@ Peça	Descrição	Modelo	Resultado
             }, 4000);
         }
 
-        fetch('/api/auth/status')
+        fetch('/compatibilidade/api/auth/status')
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 if (d.state === 'loading') {
                     if (banner) banner.style.display = 'block';
                     pollUntilDone();
                 } else if (d.state === 'error') {
-                    showError('Sessão não autenticada. <a href="/login" style="color:#842029;font-weight:600;">Clique aqui para iniciar sessão.</a>');
+                    showError('Sessão não autenticada. <a href="/compatibilidade/login" style="color:#842029;font-weight:600;">Clique aqui para iniciar sessão.</a>');
                 }
             })
             .catch(function() {});
@@ -1169,7 +1169,7 @@ def index():
                 if auth_state == "loading":
                     error_text = "⏳ Autenticação em andamento. Aguarde alguns segundos e tente novamente."
                 else:
-                    error_text = '⚠️ Sessão não iniciada. <a href="/login" class="alert-link">Clique aqui</a> para autenticar antes de pesquisar.'
+                    error_text = '⚠️ Sessão não iniciada. <a href="/compatibilidade/login" class="alert-link">Clique aqui</a> para autenticar antes de pesquisar.'
             else:
                 chassis = vc if vc else None
                 batch_start = time.time()
