@@ -589,6 +589,51 @@ def _extract_model(data: dict) -> str:
     return ""
 
 
+def format_structured_applicability(data: dict) -> tuple[bool, list[dict], str]:
+    """Return (found, list_of_detail_dicts, api_part_description).
+
+    Each detail dict contains:
+        brand, model, tables, table_desc, part_dsc
+    """
+    applications = data.get("catalog", [])
+    if not applications:
+        return False, [], ""
+
+    details = []
+    api_desc = ""
+
+    for cat in applications:
+        model = cat.get("description", "N/A")
+        brand = cat.get("brand", "")
+        tables = cat.get("table", [])
+        if not tables:
+            continue
+
+        table_codes = [t.get("table_code", "") for t in tables if t.get("table_code")]
+        table_descs = list(dict.fromkeys(
+            t.get("table_description", "") for t in tables if t.get("table_description")
+        ))
+        table_desc_str = table_descs[0] if len(table_descs) == 1 else " / ".join(table_descs)
+
+        part_dscs = [t.get("part_dsc", "") for t in tables if t.get("part_dsc")]
+        part_dsc = part_dscs[0] if part_dscs else ""
+        if part_dsc and not api_desc:
+            api_desc = part_dsc
+
+        details.append({
+            "brand": brand,
+            "model": model,
+            "tables": ", ".join(table_codes) if table_codes else "",
+            "table_desc": table_desc_str,
+            "part_dsc": part_dsc,
+        })
+
+    if not details:
+        return False, [], ""
+
+    return True, details, api_desc
+
+
 def _build_batch_row(entry: dict, data: dict | None, error: str | None) -> dict:
     code = entry["code"]
     user_desc = entry["description"]
@@ -600,6 +645,7 @@ def _build_batch_row(entry: dict, data: dict | None, error: str | None) -> dict:
             "result": f"❌ Erro: {error}",
             "found": False,
             "model": "",
+            "compatibility_details": [],
         }
 
     if data is None:
@@ -609,9 +655,11 @@ def _build_batch_row(entry: dict, data: dict | None, error: str | None) -> dict:
             "result": "❌ Erro na consulta",
             "found": False,
             "model": "",
+            "compatibility_details": [],
         }
 
     found, result_line, api_desc = format_compact_applicability(data)
+    found_s, details, _ = format_structured_applicability(data)
     model = _extract_model(data)
     return {
         "code": code,
@@ -619,6 +667,7 @@ def _build_batch_row(entry: dict, data: dict | None, error: str | None) -> dict:
         "result": result_line,
         "found": found,
         "model": model,
+        "compatibility_details": details,
     }
 
 

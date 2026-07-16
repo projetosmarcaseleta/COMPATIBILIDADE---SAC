@@ -621,6 +621,66 @@ HTML_TEMPLATE = """
         /* Scrollable table body */
         .table-scroll-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; }
         .table-scroll-wrap thead th { position: sticky; top: 0; z-index: 5; }
+
+        /* ── Compatibility Detail Cards ───────────────────── */
+        .compat-details { display: flex; flex-direction: column; gap: 6px; }
+        .compat-card {
+            background: #f8fafe;
+            border: 1px solid #e0e7ef;
+            border-left: 3px solid #1a7a2e;
+            padding: 8px 10px;
+            font-size: 0.82rem;
+            line-height: 1.4;
+            border-radius: 0 3px 3px 0;
+            transition: background 0.15s;
+        }
+        .compat-card:hover { background: #eef4fb; }
+        .compat-card-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+        .compat-brand {
+            background: #005fa9;
+            color: white;
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 2px;
+            text-transform: uppercase;
+            white-space: nowrap;
+            letter-spacing: 0.5px;
+        }
+        .compat-model-name {
+            font-weight: 700;
+            color: #222;
+            font-size: 0.84rem;
+        }
+        .compat-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 12px;
+            font-size: 0.76rem;
+            color: #555;
+        }
+        .compat-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .compat-meta-label {
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.68rem;
+            letter-spacing: 0.3px;
+        }
+        .compat-error-msg {
+            color: #bf1018;
+            font-weight: 600;
+            font-size: 0.82rem;
+        }
     </style>
     <script>
     function copyProductLink(btn, url) {
@@ -795,7 +855,39 @@ HTML_TEMPLATE = """
                                 <td class="col-part">{{ row.code }}</td>
                                 <td class="col-desc">{{ row.description or '—' }}</td>
                                 <td class="col-model">{{ row.model or '—' }}</td>
-                                <td class="col-result">{{ row.result }}</td>
+                                <td class="col-result">
+                                    {% if row.compatibility_details %}
+                                    <div class="compat-details">
+                                        {% for d in row.compatibility_details %}
+                                        <div class="compat-card">
+                                            <div class="compat-card-header">
+                                                {% if d.brand %}<span class="compat-brand">{{ d.brand }}</span>{% endif %}
+                                                <span class="compat-model-name">{{ d.model }}</span>
+                                            </div>
+                                            <div class="compat-meta">
+                                                {% if d.tables %}
+                                                <span class="compat-meta-item">
+                                                    <span class="compat-meta-label">Tabelas:</span> {{ d.tables }}
+                                                </span>
+                                                {% endif %}
+                                                {% if d.table_desc %}
+                                                <span class="compat-meta-item">
+                                                    <span class="compat-meta-label">Grupo:</span> {{ d.table_desc }}
+                                                </span>
+                                                {% endif %}
+                                                {% if d.part_dsc %}
+                                                <span class="compat-meta-item">
+                                                    <span class="compat-meta-label">Peça:</span> {{ d.part_dsc }}
+                                                </span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% else %}
+                                    <span class="compat-error-msg">{{ row.result }}</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -815,12 +907,13 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Texto oculto para cópia (inclui coluna Modelo) -->
+            <!-- Texto oculto para cópia (formato tabular estruturado) -->
             <pre id="compat-results-text" style="display:none;">Resultado de Compatibilidade — {{ report_title }}
 
-Peça	Descrição	Modelo	Resultado
-{% for row in batch_results %}{{ row.code }}	{{ row.description or '—' }}	{{ row.model or '—' }}	{{ row.result }}
-{% endfor %}
+Peça	Descrição	Marca	Modelo	Tabelas	Grupo	Peça Catálogo
+{% for row in batch_results %}{% if row.compatibility_details %}{% for d in row.compatibility_details %}{{ row.code }}	{{ row.description or '—' }}	{{ d.brand or '—' }}	{{ d.model }}	{{ d.tables or '—' }}	{{ d.table_desc or '—' }}	{{ d.part_dsc or '—' }}
+{% endfor %}{% else %}{{ row.code }}	{{ row.description or '—' }}	—	{{ row.model or '—' }}	—	—	{{ row.result }}
+{% endif %}{% endfor %}
 {{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação / {{ not_found_count }} sem resultado no catálogo{% if not_found_codes %} ({{ not_found_codes | join(', ') }}){% endif %}.</pre>
         </div>
         {% endif %}
