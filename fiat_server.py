@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 
 if sys.platform == "win32":
@@ -75,42 +75,220 @@ LOGIN_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login — Consulta ePER</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <style>
-        body { background-color: #f1f1f1; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; }
-        .eper-navbar { background-color: #005fa9; color: white; display: flex; align-items: flex-end; padding: 0 20px; height: 60px; }
-        .login-card { background: white; border: 1px solid #ddd; padding: 40px; max-width: 480px; width: 100%; }
-        .btn-iniciar { background-color: #005fa9; color: white; border: none; border-radius: 0; padding: 14px 40px; font-size: 1rem; font-weight: 600; width: 100%; }
-        .btn-iniciar:hover:not(:disabled) { background-color: #004d8a; color: white; }
-        .btn-iniciar:disabled { background-color: #6c9dc5; color: white; cursor: not-allowed; }
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0f1117 0%, #1a1d2e 40%, #0d1422 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: #e2e8f0;
+        }
+
+        /* Animated background shapes */
+        body::before {
+            content: '';
+            position: fixed; top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(ellipse at 20% 50%, rgba(59,130,246,0.06) 0%, transparent 50%),
+                        radial-gradient(ellipse at 80% 20%, rgba(99,102,241,0.05) 0%, transparent 50%),
+                        radial-gradient(ellipse at 50% 80%, rgba(16,185,129,0.04) 0%, transparent 50%);
+            animation: bgShift 20s ease-in-out infinite alternate;
+            z-index: 0;
+            pointer-events: none;
+        }
+        @keyframes bgShift {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            100% { transform: translate(2%, -2%) rotate(3deg); }
+        }
+
+        /* Navbar */
+        .eper-navbar {
+            background: linear-gradient(135deg, rgba(15,17,23,0.95), rgba(26,29,46,0.95));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            height: 64px;
+            position: relative;
+            z-index: 10;
+        }
+        .navbar-logo-wrap {
+            background: rgba(255,255,255,0.95);
+            padding: 6px 14px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+        }
+        .navbar-logo-wrap img { height: 36px; width: auto; }
+
+        /* Main content */
+        .login-wrapper {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Glass card */
+        .login-card {
+            background: rgba(255,255,255,0.04);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 44px 40px 36px;
+            max-width: 460px;
+            width: 100%;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04) inset;
+            animation: cardIn 0.5s ease-out;
+        }
+        @keyframes cardIn {
+            from { opacity: 0; transform: translateY(20px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .login-card h4 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #60a5fa, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 4px;
+        }
+        .login-card .subtitle {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-bottom: 28px;
+        }
+
+        /* Status area */
+        #status-area { min-height: 52px; margin-bottom: 20px; }
+        .status-badge {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 0.84rem;
+            font-weight: 500;
+            animation: statusIn 0.3s ease-out;
+        }
+        @keyframes statusIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .status-badge i { font-size: 1.1rem; flex-shrink: 0; }
+        .status-badge.status-idle    { background: rgba(100,116,139,0.12); color: #94a3b8; border: 1px solid rgba(100,116,139,0.15); }
+        .status-badge.status-loading { background: rgba(59,130,246,0.1); color: #60a5fa; border: 1px solid rgba(59,130,246,0.15); }
+        .status-badge.status-success { background: rgba(16,185,129,0.1); color: #34d399; border: 1px solid rgba(16,185,129,0.15); }
+        .status-badge.status-error   { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.15); }
+
+        .status-badge.status-loading i { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* Button */
+        .btn-iniciar {
+            width: 100%;
+            padding: 14px 24px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            color: white;
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 16px rgba(59,130,246,0.25);
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-iniciar::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent);
+            opacity: 0;
+            transition: opacity 0.25s;
+        }
+        .btn-iniciar:hover:not(:disabled)::before { opacity: 1; }
+        .btn-iniciar:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(59,130,246,0.35);
+        }
+        .btn-iniciar:active:not(:disabled) {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(59,130,246,0.2);
+        }
+        .btn-iniciar:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .btn-iniciar .spinner-border {
+            width: 16px; height: 16px;
+            border-width: 2px;
+        }
+
+        /* Direct link */
+        .direct-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.84rem;
+            color: #64748b;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .direct-link:hover { color: #60a5fa; }
+        .direct-link i { transition: transform 0.2s; }
+        .direct-link:hover i { transform: translateX(3px); }
+
+        @media (max-width: 520px) {
+            .login-card { padding: 32px 24px 28px; }
+        }
     </style>
 </head>
 <body>
     <div class="eper-navbar">
-        <div style="background:#ffffff;padding:5px 10px;border-radius:4px;display:flex;align-items:center;margin-bottom:8px;">
-            <img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/22449504./6ECFF29E478B05B93B2973D56786FCFE/standard_resolution.jpg" alt="Marca Seleta" style="height:48px;width:auto;">
+        <div class="navbar-logo-wrap">
+            <img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/22449504./6ECFF29E478B05B93B2973D56786FCFE/standard_resolution.jpg" alt="Marca Seleta">
         </div>
     </div>
 
-    <div class="d-flex justify-content-center align-items-center" style="min-height:calc(100vh - 60px);padding:40px 20px;">
+    <div class="login-wrapper">
         <div class="login-card">
-            <h4 class="mb-1" style="color:#005fa9;font-weight:700;">Consulta de Compatibilidade</h4>
-            <p class="text-muted mb-4" style="font-size:0.9rem;">Sistema de Consulta ePER — Peças Fiat</p>
+            <h4>Consulta de Compatibilidade</h4>
+            <p class="subtitle">Sistema de Consulta ePER — Peças Fiat</p>
 
-            <div id="status-area" class="mb-4" style="min-height:52px;">
-                <div class="alert alert-secondary mb-0" style="font-size:0.85rem;">
-                    <i class="bi bi-info-circle me-2"></i> Verificando status da sessão...
+            <div id="status-area">
+                <div class="status-badge status-idle">
+                    <i class="bi bi-hourglass-split"></i>
+                    <span>Verificando status da sessão...</span>
                 </div>
             </div>
 
-            <button id="btn-start" class="btn btn-iniciar" disabled>
-                <span class="spinner-border spinner-border-sm me-2"></span> Verificando...
+            <button id="btn-start" class="btn-iniciar" disabled>
+                <span class="spinner-border spinner-border-sm"></span> Verificando...
             </button>
 
-            <div class="mt-3 text-center">
-                <a href="/compatibilidade/" style="font-size:0.85rem;color:#888;">Ir direto para a busca &rarr;</a>
-            </div>
+            <a href="/compatibilidade/" class="direct-link">
+                Ir direto para a busca <i class="bi bi-arrow-right"></i>
+            </a>
         </div>
     </div>
 
@@ -119,14 +297,14 @@ LOGIN_TEMPLATE = """
 
     function setStatus(state, msg) {
         var cfg = {
-            success: {color:'success', icon:'bi-check-circle-fill'},
-            loading: {color:'info',    icon:'bi-arrow-repeat'},
-            error:   {color:'danger',  icon:'bi-exclamation-triangle-fill'},
-            idle:    {color:'secondary',icon:'bi-info-circle'}
-        }[state] || {color:'secondary', icon:'bi-info-circle'};
+            success: {cls:'status-success', icon:'bi-check-circle-fill'},
+            loading: {cls:'status-loading', icon:'bi-arrow-repeat'},
+            error:   {cls:'status-error',   icon:'bi-exclamation-triangle-fill'},
+            idle:    {cls:'status-idle',     icon:'bi-info-circle'}
+        }[state] || {cls:'status-idle', icon:'bi-info-circle'};
         document.getElementById('status-area').innerHTML =
-            '<div class="alert alert-' + cfg.color + ' mb-0" style="font-size:0.85rem;">' +
-            '<i class="bi ' + cfg.icon + ' me-2"></i>' + msg + '</div>';
+            '<div class="status-badge ' + cfg.cls + '">' +
+            '<i class="bi ' + cfg.icon + '"></i><span>' + msg + '</span></div>';
     }
 
     function setBtnReady(label, action) {
@@ -139,7 +317,7 @@ LOGIN_TEMPLATE = """
     function startAuth() {
         var btn = document.getElementById('btn-start');
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Conectando ao portal Fiat...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Conectando ao portal Fiat...';
         setStatus('loading', 'Iniciando autenticação com o portal Fiat. Redirecionando para a busca...');
         fetch('/compatibilidade/api/auth/start', {method:'POST'})
             .then(function(r) { return r.json(); })
@@ -191,7 +369,7 @@ LOGIN_TEMPLATE = """
                 setStatus('loading', 'Autenticação em andamento em segundo plano...');
                 var btn = document.getElementById('btn-start');
                 btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Aguardando autenticação...';
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Aguardando autenticação...';
                 pollUntilReady();
             } else {
                 setStatus('idle', 'Clique no botão abaixo para autenticar e acessar o sistema.');
@@ -216,477 +394,813 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Consulta Catálogo ePER</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <style>
-        body { 
-            background-color: #f1f1f1; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 0; 
-            padding: 0; 
+        /* ── Reset & Base ─────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #0f1117;
+            color: #e2e8f0;
+            min-height: 100vh;
+            line-height: 1.5;
         }
-        
-        /* Navbar / Header */
+
+        /* ── Navbar ───────────────────────────────────────── */
         .eper-navbar {
-            background-color: #005fa9;
-            color: white;
+            background: linear-gradient(135deg, rgba(15,17,23,0.97), rgba(26,29,46,0.97));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
             display: flex;
-            align-items: flex-end;
-            padding: 0 20px;
-            height: 60px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            height: 64px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
-        .eper-logo {
-            font-size: 1.5rem;
-            font-weight: 800;
-            margin-right: 15px;
-            letter-spacing: 1px;
-            padding-bottom: 10px;
+        .navbar-logo-wrap {
+            background: rgba(255,255,255,0.95);
+            padding: 6px 14px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.2);
         }
-        .eper-header-right {
-            margin-left: auto;
-            padding-bottom: 15px;
+        .navbar-logo-wrap img { height: 36px; width: auto; }
+        .navbar-title {
+            font-size: 0.82rem;
+            color: #64748b;
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
 
-        /* Subheader */
+        /* ── Subheader ────────────────────────────────────── */
         .eper-subheader {
-            background-color: #f8f9fa;
-            border-bottom: 1px solid #ddd;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
             display: flex;
             align-items: center;
-            height: 40px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #555;
-        }
-        .eper-btn-back {
-            background-color: #bf1018;
-            color: white;
-            height: 100%;
-            width: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 15px;
-        }
-
-        /* Search Area */
-        .search-container {
-            padding: 30px 0;
-            background-color: #f1f1f1;
-            display: flex;
-            justify-content: center;
-        }
-        .search-box {
-            display: flex;
-            width: 100%;
-            max-width: 700px;
-            background: white;
-            border: 1px solid #005fa9;
-        }
-        .search-box input {
-            border: none;
-            padding: 10px 15px;
-            outline: none;
-            box-shadow: none;
-            border-radius: 0;
-            font-size: 0.95rem;
-        }
-        .search-box input:focus {
-            box-shadow: none;
-        }
-        .search-box .btn-search {
-            background-color: #005fa9;
-            color: white;
-            border: none;
-            border-radius: 0;
-            padding: 10px 20px;
-        }
-        .search-box .btn-search:hover {
-            background-color: #004d8a;
-        }
-
-        /* Results / Panel */
-        .eper-panel {
-            background: white;
-            margin-bottom: 25px;
-            border: 1px solid #ddd;
-        }
-        .eper-panel-header {
-            background-color: #005fa9;
-            color: white;
-            padding: 8px 15px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .eper-panel-title {
-            padding: 15px;
-            font-size: 1.1rem;
-            color: #005fa9;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            border-bottom: 1px solid #ddd;
-        }
-        .eper-panel-title i {
-            font-size: 1.4rem;
-            margin-right: 10px;
-        }
-        .eper-panel-body {
-            padding: 0;
-        }
-
-        /* Grid data */
-        .data-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            font-size: 0.85rem;
-        }
-        .data-row {
-            display: flex;
-            padding: 8px 15px;
-            border-bottom: 1px solid #f1f1f1;
-        }
-        .data-label {
-            width: 40%;
-            text-align: right;
-            color: #666;
-            text-transform: uppercase;
-            margin-right: 15px;
-        }
-        .data-value {
-            width: 60%;
-            font-weight: 500;
-            color: #333;
-        }
-        .bg-light-blue { background-color: #f7fbff; }
-
-        /* Output Pre */
-        .raw-output {
-            background: #f8f9fa;
-            border: none;
-            padding: 15px;
-            font-size: 0.85rem;
-            color: #333;
-            margin: 0;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        /* Product Cards */
-        .product-card {
-            background: white;
-            border: 1px solid #ddd;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        .product-card-img-wrap {
-            background: #f8f9fa;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 160px;
-            overflow: hidden;
-            border-bottom: 1px solid #eee;
-        }
-        .product-card-img-wrap img {
-            max-height: 150px;
-            max-width: 100%;
-            object-fit: contain;
-        }
-        .product-card-body {
-            padding: 12px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
-        .product-card-name {
-            font-size: 0.8rem;
-            color: #333;
-            font-weight: 500;
-            line-height: 1.35;
-            flex: 1;
-            margin-bottom: 10px;
-        }
-        .product-card-price-original {
-            font-size: 0.75rem;
-            color: #999;
-            text-decoration: line-through;
-            margin-bottom: 2px;
-        }
-        .product-card-price-pix {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #1a7a2e;
-            margin-bottom: 2px;
-        }
-        .product-card-price-pix-label {
-            font-size: 0.7rem;
-            color: #1a7a2e;
-            margin-bottom: 4px;
-        }
-        .product-card-installments {
-            font-size: 0.72rem;
-            color: #555;
-            margin-bottom: 12px;
-        }
-        .btn-product-actions {
-            display: flex;
-            width: 100%;
-        }
-        .btn-link-product {
-            background-color: #005fa9;
-            color: white;
-            border: none;
-            border-radius: 0;
-            padding: 8px 6px;
+            height: 42px;
             font-size: 0.78rem;
             font-weight: 600;
-            flex: 1;
-            text-align: center;
-            text-decoration: none;
+            color: #64748b;
+            padding-left: 28px;
+            letter-spacing: 0.5px;
+        }
+        .eper-subheader i { margin-right: 6px; color: #3b82f6; }
+
+        /* ── Search Container ─────────────────────────────── */
+        .search-section {
+            max-width: 960px;
+            margin: 32px auto;
+            padding: 0 20px;
+        }
+
+        /* Tabs */
+        .search-tabs {
             display: flex;
-            align-items: center;
-            justify-content: center;
             gap: 4px;
+            margin-bottom: 0;
         }
-        .btn-link-product:hover {
-            background-color: #004d8a;
-            color: white;
-        }
-        .btn-copy-product {
-            background-color: #4a4a6a;
-            color: white;
-            border: none;
-            border-left: 1px solid rgba(255,255,255,0.2);
-            border-radius: 0;
-            padding: 8px 10px;
-            font-size: 0.78rem;
+        .search-tab {
+            padding: 10px 20px;
+            font-size: 0.82rem;
             font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            color: #64748b;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
             cursor: pointer;
+            transition: all 0.2s;
             display: flex;
             align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            min-width: 36px;
+            gap: 6px;
         }
-        .btn-copy-product:hover {
-            background-color: #36365a;
-        }
-        .btn-copy-product.copied {
-            background-color: #1a7a2e;
-        }
-        .product-unavailable {
-            font-size: 0.72rem;
-            color: #bf1018;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .no-results-msg {
-            text-align: center;
-            padding: 30px 20px;
-            color: #555;
-            font-size: 0.9rem;
+        .search-tab:hover { color: #94a3b8; background: rgba(255,255,255,0.05); }
+        .search-tab.active {
+            color: #60a5fa;
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.08);
         }
 
-        /* Bulk search */
-        .bulk-search-box {
-            width: 100%;
-            max-width: 900px;
-            background: white;
-            border: 1px solid #005fa9;
-            padding: 15px;
+        /* Search panels */
+        .search-panel-wrap {
+            background: rgba(255,255,255,0.04);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 0 12px 12px 12px;
+            padding: 28px;
+            animation: panelIn 0.3s ease-out;
         }
-        .bulk-search-box textarea {
-            border: 1px solid #ddd;
-            border-radius: 0;
+        @keyframes panelIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .search-panel { display: none; }
+        .search-panel.active { display: block; }
+
+        /* Form elements */
+        .form-label-custom {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 6px;
+            display: block;
+        }
+        .form-input, .form-textarea {
+            width: 100%;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: #e2e8f0;
+            padding: 10px 14px;
             font-size: 0.9rem;
-            font-family: 'Consolas', 'Courier New', monospace;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+        .form-textarea {
+            font-family: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
             resize: vertical;
             min-height: 160px;
+            line-height: 1.6;
         }
-        .bulk-search-box textarea:focus {
-            border-color: #005fa9;
-            box-shadow: none;
+        .form-input:focus, .form-textarea:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
         }
-        .bulk-hint {
-            font-size: 0.75rem;
-            color: #777;
+        .form-input::placeholder, .form-textarea::placeholder {
+            color: #475569;
+        }
+        .form-hint {
+            font-size: 0.72rem;
+            color: #475569;
             margin-top: 6px;
         }
-        .compat-table {
-            width: 100%;
-            font-size: 0.85rem;
-            margin: 0;
+
+        /* Grid layout for search form */
+        .search-grid {
+            display: grid;
+            grid-template-columns: 1.8fr 1fr;
+            gap: 20px;
         }
-        .compat-table thead th {
-            background-color: #005fa9;
+        @media (max-width: 700px) {
+            .search-grid { grid-template-columns: 1fr; }
+        }
+
+        /* Search button */
+        .btn-search-main {
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
             color: white;
-            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            padding: 12px 28px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.25s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 16px rgba(59,130,246,0.2);
+        }
+        .btn-search-main:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(59,130,246,0.3);
+        }
+        .btn-search-main:active {
+            transform: translateY(0);
+        }
+
+        /* Name search bar */
+        .name-search-bar {
+            display: flex;
+            gap: 0;
+        }
+        .name-search-bar .form-input {
+            border-radius: 8px 0 0 8px;
+            flex: 1;
+        }
+        .name-search-bar .btn-search-icon {
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: white;
+            border: none;
+            border-radius: 0 8px 8px 0;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        .name-search-bar .btn-search-icon:hover {
+            background: linear-gradient(135deg, #2563eb, #4f46e5);
+        }
+
+        /* ── Alerts ───────────────────────────────────────── */
+        .alert-modern {
+            padding: 14px 18px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: alertIn 0.3s ease-out;
+            max-width: 960px;
+            margin: 0 auto 16px;
+        }
+        @keyframes alertIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .alert-success-modern {
+            background: rgba(16,185,129,0.1);
+            border: 1px solid rgba(16,185,129,0.2);
+            color: #34d399;
+        }
+        .alert-danger-modern {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.2);
+            color: #f87171;
+        }
+
+        /* ── Results Panel ────────────────────────────────── */
+        .results-section {
+            max-width: 1320px;
+            margin: 0 auto 32px;
+            padding: 0 20px;
+        }
+        .results-panel {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 14px;
+            overflow: hidden;
+            animation: panelIn 0.4s ease-out;
+        }
+
+        /* Panel header */
+        .panel-header {
+            background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(99,102,241,0.1));
+            padding: 14px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .panel-header-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #93c5fd;
             text-transform: uppercase;
-            font-size: 0.75rem;
-            padding: 10px 12px;
-            border: none;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        .compat-table tbody td {
-            padding: 10px 12px;
-            vertical-align: top;
-            border-bottom: 1px solid #eee;
-        }
-        .compat-table tbody tr:nth-child(even) {
-            background-color: #f7fbff;
-        }
-        .compat-table .col-part {
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-weight: 600;
-            white-space: nowrap;
-            width: 140px;
-        }
-        .compat-table .col-desc {
-            width: 180px;
-            color: #555;
-        }
-        .compat-table .col-result {
-            color: #333;
-            line-height: 1.45;
-        }
-        .compat-summary {
-            padding: 12px 15px;
-            background: #f8f9fa;
-            border-top: 1px solid #ddd;
-            font-size: 0.85rem;
-            color: #444;
-        }
-        .compat-summary .count-found {
-            color: #1a7a2e;
-            font-weight: 600;
-        }
-        .compat-summary .count-not-found {
-            color: #bf1018;
-            font-weight: 600;
-        }
-        .btn-copy-results {
-            background-color: #4a4a6a;
-            color: white;
-            border: none;
-            border-radius: 0;
+        .btn-copy-report {
+            background: rgba(255,255,255,0.08);
+            color: #94a3b8;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
             padding: 6px 14px;
             font-size: 0.78rem;
             font-weight: 600;
+            font-family: 'Inter', sans-serif;
             cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .btn-copy-results:hover {
-            background-color: #36365a;
+        .btn-copy-report:hover {
+            background: rgba(255,255,255,0.12);
+            color: #e2e8f0;
         }
-        .btn-copy-results.copied {
-            background-color: #1a7a2e;
+        .btn-copy-report.copied {
+            background: rgba(16,185,129,0.15);
+            color: #34d399;
+            border-color: rgba(16,185,129,0.3);
         }
-        .report-title {
-            padding: 15px;
-            font-size: 1.05rem;
-            color: #005fa9;
-            font-weight: 700;
-            border-bottom: 1px solid #ddd;
-        }
-
-        /* ── Redesign: Result Table ─────────────────────────── */
-        .col-status { width: 34px; text-align: center; padding: 10px 6px !important; }
-        .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-        .status-dot.found     { background: #1a7a2e; box-shadow: 0 0 0 2px #d1e7dd; }
-        .status-dot.not-found { background: #bf1018; box-shadow: 0 0 0 2px #f8d7da; }
-        .found-row     { border-left: 3px solid #1a7a2e; }
-        .not-found-row { border-left: 3px solid #bf1018; }
-        .found-row:hover, .not-found-row:hover { background-color: #f0f6ff !important; }
-        .compat-table .col-model { width: 160px; font-size: 0.82rem; color: #444; }
 
         /* Summary strip */
-        .result-summary-strip { padding: 10px 15px; background: #f8f9fa; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .stat-badge { font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
-        .stat-badge.total     { background: #e2e3e5; color: #41464b; }
-        .stat-badge.found     { background: #d1e7dd; color: #0f5132; }
-        .stat-badge.not-found { background: #f8d7da; color: #842029; }
+        .summary-strip {
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .summary-title {
+            font-weight: 800;
+            font-size: 0.95rem;
+            background: linear-gradient(135deg, #60a5fa, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-pill {
+            font-size: 0.76rem;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .stat-pill.total     { background: rgba(148,163,184,0.12); color: #94a3b8; }
+        .stat-pill.found     { background: rgba(16,185,129,0.12); color: #34d399; }
+        .stat-pill.not-found { background: rgba(239,68,68,0.12); color: #f87171; }
+        .summary-stats {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+            flex-wrap: wrap;
+        }
 
         /* Progress bar */
-        .found-progress-wrap { height: 4px; background: #e9ecef; }
-        .found-progress-bar  { height: 100%; background: linear-gradient(90deg, #1a7a2e, #2da84e); }
+        .progress-wrap {
+            height: 3px;
+            background: rgba(255,255,255,0.04);
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #34d399);
+            transition: width 1s ease-out;
+            animation: progressGlow 2s ease-in-out infinite alternate;
+        }
+        @keyframes progressGlow {
+            from { box-shadow: 0 0 4px rgba(16,185,129,0.3); }
+            to   { box-shadow: 0 0 12px rgba(16,185,129,0.5); }
+        }
 
         /* Filter bar */
-        .compat-filter-bar { padding: 10px 15px; background: #f0f6ff; border-bottom: 1px solid #d0d9e8; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .compat-filter-input { border: 1px solid #b0c4de; padding: 5px 10px; font-size: 0.82rem; flex: 1; min-width: 180px; max-width: 340px; border-radius: 0; outline: none; }
-        .compat-filter-input:focus { border-color: #005fa9; }
-        .toggle-errors-btn { font-size: 0.78rem; padding: 5px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 0; color: #555; white-space: nowrap; }
-        .toggle-errors-btn.active { background: #bf1018; color: white; border-color: #bf1018; }
+        .filter-bar {
+            padding: 12px 20px;
+            background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .filter-input {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            color: #e2e8f0;
+            padding: 7px 12px 7px 32px;
+            font-size: 0.82rem;
+            font-family: 'Inter', sans-serif;
+            flex: 1;
+            min-width: 200px;
+            max-width: 360px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .filter-input:focus { border-color: #3b82f6; }
+        .filter-input::placeholder { color: #475569; }
+        .filter-icon-wrap {
+            position: relative;
+        }
+        .filter-icon-wrap i {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #475569;
+            font-size: 0.82rem;
+            pointer-events: none;
+        }
+        .toggle-btn {
+            font-size: 0.78rem;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            padding: 6px 14px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .toggle-btn:hover { background: rgba(255,255,255,0.08); }
+        .toggle-btn.active {
+            background: rgba(16,185,129,0.15);
+            color: #34d399;
+            border-color: rgba(16,185,129,0.3);
+        }
+        .filter-count {
+            font-size: 0.72rem;
+            color: #475569;
+            margin-left: auto;
+        }
 
-        /* Scrollable table body */
-        .table-scroll-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; }
-        .table-scroll-wrap thead th { position: sticky; top: 0; z-index: 5; }
+        /* ── Table ────────────────────────────────────────── */
+        .table-scroll-wrap {
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .compat-table {
+            width: 100%;
+            font-size: 0.84rem;
+            border-collapse: collapse;
+        }
+        .compat-table thead th {
+            background: rgba(30,33,48,0.95);
+            color: #93c5fd;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.72rem;
+            letter-spacing: 0.5px;
+            padding: 12px 14px;
+            border: none;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        .compat-table tbody td {
+            padding: 12px 14px;
+            vertical-align: top;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .compat-table tbody tr { transition: background 0.15s; }
+        .compat-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+        .compat-table tbody tr:hover { background: rgba(59,130,246,0.06) !important; }
+
+        .col-status { width: 34px; text-align: center; padding: 12px 8px !important; }
+        .status-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.found     { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+        .status-dot.not-found { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+        .found-row     { border-left: 3px solid #10b981; }
+        .not-found-row { border-left: 3px solid #ef4444; }
+
+        .col-part {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-weight: 600;
+            white-space: nowrap;
+            width: 140px;
+            color: #e2e8f0;
+        }
+        .col-desc { width: 180px; color: #94a3b8; }
+        .col-model { width: 160px; font-size: 0.82rem; color: #94a3b8; }
+        .col-result { color: #e2e8f0; line-height: 1.45; }
 
         /* ── Compatibility Detail Cards ───────────────────── */
         .compat-details { display: flex; flex-direction: column; gap: 6px; }
         .compat-card {
-            background: #f8fafe;
-            border: 1px solid #e0e7ef;
-            border-left: 3px solid #1a7a2e;
-            padding: 8px 10px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-left: 3px solid #10b981;
+            padding: 10px 12px;
             font-size: 0.82rem;
             line-height: 1.4;
-            border-radius: 0 3px 3px 0;
-            transition: background 0.15s;
+            border-radius: 0 8px 8px 0;
+            transition: background 0.2s, transform 0.15s;
         }
-        .compat-card:hover { background: #eef4fb; }
+        .compat-card:hover {
+            background: rgba(59,130,246,0.06);
+            transform: translateX(2px);
+        }
         .compat-card-header {
             display: flex;
             align-items: center;
-            gap: 6px;
-            margin-bottom: 4px;
+            gap: 8px;
+            margin-bottom: 6px;
         }
         .compat-brand {
-            background: #005fa9;
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
             color: white;
-            font-size: 0.68rem;
-            font-weight: 700;
-            padding: 1px 6px;
-            border-radius: 2px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 4px;
             text-transform: uppercase;
             white-space: nowrap;
             letter-spacing: 0.5px;
         }
         .compat-model-name {
             font-weight: 700;
-            color: #222;
+            color: #f1f5f9;
             font-size: 0.84rem;
         }
         .compat-meta {
             display: flex;
             flex-wrap: wrap;
-            gap: 4px 12px;
+            gap: 4px 14px;
             font-size: 0.76rem;
-            color: #555;
+            color: #94a3b8;
         }
         .compat-meta-item {
             display: flex;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
         }
         .compat-meta-label {
-            color: #888;
-            font-weight: 600;
+            color: #64748b;
+            font-weight: 700;
             text-transform: uppercase;
-            font-size: 0.68rem;
+            font-size: 0.66rem;
             letter-spacing: 0.3px;
         }
         .compat-error-msg {
-            color: #bf1018;
+            color: #f87171;
             font-weight: 600;
             font-size: 0.82rem;
         }
+
+        /* Summary footer */
+        .results-footer {
+            padding: 14px 20px;
+            background: rgba(255,255,255,0.02);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.84rem;
+            color: #94a3b8;
+        }
+        .count-found { color: #34d399; font-weight: 700; }
+        .count-not-found { color: #f87171; font-weight: 700; }
+
+        /* ── Product Cards ────────────────────────────────── */
+        .products-section {
+            max-width: 1280px;
+            margin: 0 auto 32px;
+            padding: 0 20px;
+        }
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            padding: 20px;
+        }
+        .product-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+        }
+        .product-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+            border-color: rgba(59,130,246,0.2);
+        }
+        .product-card-img-wrap {
+            background: rgba(255,255,255,0.03);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 160px;
+            overflow: hidden;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .product-card-img-wrap img {
+            max-height: 140px;
+            max-width: 90%;
+            object-fit: contain;
+            transition: transform 0.3s;
+        }
+        .product-card:hover .product-card-img-wrap img {
+            transform: scale(1.08);
+        }
+        .product-card-body {
+            padding: 14px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .product-card-name {
+            font-size: 0.8rem;
+            color: #e2e8f0;
+            font-weight: 500;
+            line-height: 1.4;
+            flex: 1;
+            margin-bottom: 10px;
+        }
+        .product-card-price-original {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-decoration: line-through;
+            margin-bottom: 2px;
+        }
+        .product-card-price-pix {
+            font-size: 1rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #10b981, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 2px;
+        }
+        .product-card-price-pix-label {
+            font-size: 0.68rem;
+            color: #34d399;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .product-card-installments {
+            font-size: 0.72rem;
+            color: #64748b;
+            margin-bottom: 12px;
+        }
+        .product-unavailable {
+            font-size: 0.72rem;
+            color: #f87171;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .btn-product-actions {
+            display: flex;
+            width: 100%;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        .btn-link-product {
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: white;
+            border: none;
+            padding: 10px 8px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            flex: 1;
+            text-align: center;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+        .btn-link-product:hover {
+            filter: brightness(1.15);
+            color: white;
+        }
+        .btn-copy-product {
+            background: rgba(255,255,255,0.06);
+            color: #94a3b8;
+            border: none;
+            border-left: 1px solid rgba(255,255,255,0.06);
+            padding: 10px 12px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            min-width: 40px;
+            transition: all 0.2s;
+        }
+        .btn-copy-product:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
+        .btn-copy-product.copied { background: rgba(16,185,129,0.15); color: #34d399; }
+
+        /* No results */
+        .no-results-msg {
+            text-align: center;
+            padding: 40px 20px;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        .no-results-msg i {
+            font-size: 2.5rem;
+            color: #334155;
+            display: block;
+            margin-bottom: 12px;
+        }
+
+        /* ── Footer ───────────────────────────────────────── */
+        .app-footer {
+            text-align: center;
+            padding: 24px 20px;
+            color: #334155;
+            font-size: 0.7rem;
+            margin-top: 40px;
+            border-top: 1px solid rgba(255,255,255,0.04);
+        }
+
+        /* ── Auth Banner ──────────────────────────────────── */
+        #auth-status-banner {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            z-index: 1050;
+            padding: 14px 24px;
+            animation: bannerSlide 0.3s ease-out;
+        }
+        @keyframes bannerSlide {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0); }
+        }
+        .banner-inner {
+            max-width: 960px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(30,58,138,0.9);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(59,130,246,0.2);
+            border-radius: 12px;
+            padding: 12px 20px;
+        }
+        .banner-inner .spinner-border {
+            width: 16px; height: 16px;
+            border-width: 2px;
+            color: #60a5fa;
+            flex-shrink: 0;
+        }
+        #auth-banner-msg {
+            font-size: 0.84rem;
+            color: #93c5fd;
+            flex: 1;
+        }
+        .banner-link {
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: white;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 6px 14px;
+            text-decoration: none;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.2s;
+        }
+        .banner-link:hover { filter: brightness(1.1); color: white; }
+
+        /* ── Toast Notification ───────────────────────────── */
+        .toast-notification {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: rgba(16,185,129,0.15);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(16,185,129,0.3);
+            color: #34d399;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 0.84rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 2000;
+            animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 1.5s forwards;
+            pointer-events: none;
+        }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes toastOut { to { opacity: 0; transform: translateY(10px); } }
+
+        /* ── Responsive ───────────────────────────────────── */
+        @media (max-width: 768px) {
+            .eper-navbar { padding: 0 16px; }
+            .search-section { padding: 0 12px; margin: 20px auto; }
+            .search-panel-wrap { padding: 20px 16px; border-radius: 0 0 12px 12px; }
+            .search-grid { grid-template-columns: 1fr; }
+            .results-section, .products-section { padding: 0 12px; }
+            .products-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; padding: 12px; }
+            .summary-strip { flex-direction: column; align-items: flex-start; }
+            .summary-stats { margin-left: 0; }
+        }
     </style>
+
     <script>
+    function showToast(msg) {
+        var t = document.createElement('div');
+        t.className = 'toast-notification';
+        t.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + msg;
+        document.body.appendChild(t);
+        setTimeout(function() { t.remove(); }, 2000);
+    }
     function copyProductLink(btn, url) {
         navigator.clipboard.writeText(url).then(function() {
             btn.innerHTML = '<i class="bi bi-check-lg"></i>';
             btn.classList.add('copied');
+            showToast('Link copiado!');
             setTimeout(function() {
                 btn.innerHTML = '<i class="bi bi-clipboard"></i>';
                 btn.classList.remove('copied');
@@ -700,6 +1214,7 @@ HTML_TEMPLATE = """
             var original = btn.innerHTML;
             btn.innerHTML = '<i class="bi bi-check-lg"></i> Copiado!';
             btn.classList.add('copied');
+            showToast('Relatório copiado para a área de transferência!');
             setTimeout(function() {
                 btn.innerHTML = original;
                 btn.classList.remove('copied');
@@ -727,270 +1242,300 @@ HTML_TEMPLATE = """
         if (btn) btn.classList.toggle('active');
         filterCompatTable();
     }
+    function switchTab(tabId) {
+        document.querySelectorAll('.search-tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.search-panel').forEach(function(p) { p.classList.remove('active'); });
+        document.querySelector('[data-tab="' + tabId + '"]').classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+    }
     </script>
 </head>
 <body>
 
     <!-- Header -->
     <div class="eper-navbar">
-        <div class="eper-logo" style="background: #ffffff; padding: 5px 10px; border-radius: 4px; display: flex; align-items: center; margin-bottom: 8px;">
-            <img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/22449504./6ECFF29E478B05B93B2973D56786FCFE/standard_resolution.jpg" alt="Marca Seleta Logo" style="height: 48px; width: auto;">
+        <div class="navbar-logo-wrap">
+            <img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/22449504./6ECFF29E478B05B93B2973D56786FCFE/standard_resolution.jpg" alt="Marca Seleta Logo">
         </div>
+        <span class="navbar-title">CONSULTA ePER</span>
     </div>
 
     <!-- Subheader -->
     <div class="eper-subheader">
-        <span style="padding-left: 20px;"><i class="bi bi-car-front"></i> &raquo; BUSCA DE COMPATIBILIDADE</span>
+        <i class="bi bi-car-front"></i> BUSCA DE COMPATIBILIDADE
     </div>
 
-    <div class="container-fluid px-4">
-        
-        <!-- Search Area -->
-        <div class="search-container" style="flex-direction: column; gap: 10px;">
-            <form method="POST" class="w-100 d-flex flex-column align-items-center">
-                <div class="bulk-search-box">
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-8">
-                            <label for="parts_bulk" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">CÓDIGOS DAS PEÇAS (uma por linha)</label>
-                            <textarea class="form-control" id="parts_bulk" name="parts_bulk" rows="8" placeholder="K55111314AC	Reservatório&#10;K55111354AA	Tampa&#10;K05168128AB	Barra estabilizadora&#10;K68073033AC	Haste da barra">{{ parts_bulk }}</textarea>
-                            <div class="bulk-hint">Cole vários códigos de uma vez. Use tab, ponto-e-vírgula ou espaço para incluir a descrição opcional.</div>
+    <!-- Search Section -->
+    <div class="search-section">
+        <div class="search-tabs">
+            <button class="search-tab active" data-tab="tab-code" onclick="switchTab('tab-code')">
+                <i class="bi bi-upc-scan"></i> Por Código
+            </button>
+            <button class="search-tab" data-tab="tab-name" onclick="switchTab('tab-name')">
+                <i class="bi bi-search"></i> Por Nome
+            </button>
+        </div>
+
+        <div class="search-panel-wrap">
+            <!-- Tab: By Code -->
+            <div id="tab-code" class="search-panel active">
+                <form method="POST">
+                    <div class="search-grid">
+                        <div>
+                            <label for="parts_bulk" class="form-label-custom">Códigos das Peças (uma por linha)</label>
+                            <textarea class="form-textarea" id="parts_bulk" name="parts_bulk" rows="8" placeholder="K55111314AC&#9;Reservatório&#10;K55111354AA&#9;Tampa&#10;K05168128AB&#9;Barra estabilizadora&#10;K68073033AC&#9;Haste da barra">{{ parts_bulk }}</textarea>
+                            <div class="form-hint">Cole vários códigos de uma vez. Use tab, ponto-e-vírgula ou espaço para incluir a descrição opcional.</div>
                         </div>
-                        <div class="col-md-4">
-                            <label for="vc" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">CHASSI (Opcional)</label>
-                            <input type="text" class="form-control mb-3" id="vc" name="vc" value="{{ vc }}" placeholder="Ex: 9BWAA01J754038498">
-                            <label for="vehicle_label" class="form-label text-muted small fw-bold mb-1" style="font-size: 0.75rem;">VEÍCULO (Opcional)</label>
-                            <input type="text" class="form-control" id="vehicle_label" name="vehicle_label" value="{{ vehicle_label }}" placeholder="Ex: FIAT 500 (2010–2018)">
-                            <div class="bulk-hint">Título do relatório. Se vazio, será inferido dos resultados.</div>
+                        <div>
+                            <label for="vc" class="form-label-custom">Chassi (Opcional)</label>
+                            <input type="text" class="form-input" id="vc" name="vc" value="{{ vc }}" placeholder="Ex: 9BWAA01J754038498" style="margin-bottom:16px;">
+
+                            <label for="vehicle_label" class="form-label-custom">Veículo (Opcional)</label>
+                            <input type="text" class="form-input" id="vehicle_label" name="vehicle_label" value="{{ vehicle_label }}" placeholder="Ex: FIAT 500 (2010–2018)">
+                            <div class="form-hint">Título do relatório. Se vazio, será inferido dos resultados.</div>
                         </div>
                     </div>
-                    <div class="d-flex justify-content-end">
-                        <button type="submit" class="btn btn-search"><i class="bi bi-search me-1"></i> Consultar Compatibilidade</button>
+                    <div style="display:flex;justify-content:flex-end;margin-top:20px;">
+                        <button type="submit" class="btn-search-main">
+                            <i class="bi bi-search"></i> Consultar Compatibilidade
+                        </button>
                     </div>
-                </div>
-            </form>
-            <form method="POST" class="w-100 d-flex flex-column align-items-center">
-                <div class="d-flex w-100" style="max-width: 900px; margin-bottom: 5px;">
-                    <div style="padding-left: 5px;"><label for="name_query" class="form-label text-muted small fw-bold mb-0" style="font-size: 0.75rem;">BUSCAR POR NOME (FiatPecas.com.br)</label></div>
-                </div>
-                <div class="search-box" style="max-width: 900px;">
-                    <input type="text" class="form-control" id="name_query" name="name_query" value="{{ name_query }}" placeholder="Ex: Lâmpada pingo d'água w5w">
-                    <button type="submit" class="btn btn-search"><i class="bi bi-search"></i></button>
-                </div>
-            </form>
-        </div>
+                </form>
+            </div>
 
-        {% if request.args.get('refreshed') == 'success' %}
-        <div class="alert alert-success mx-auto mt-3" style="max-width: 900px;" role="alert">
-            <i class="bi bi-check-circle-fill me-2"></i> Sessão renovada com sucesso!
-        </div>
-        {% elif request.args.get('refreshed') == 'error' %}
-        <div class="alert alert-danger mx-auto mt-3" style="max-width: 900px;" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i> Falha ao renovar: {{ request.args.get('errmsg') }}
-        </div>
-        {% endif %}
-
-        {% if error %}
-        <div class="alert alert-danger mx-auto" style="max-width: 900px;" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error | safe }}
-        </div>
-        {% endif %}
-
-        {% if batch_results %}
-        <div class="mx-auto" style="max-width: 1280px;">
-            <div class="eper-panel mt-2">
-
-                <!-- Cabeçalho do painel -->
-                <div class="eper-panel-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-clipboard-data me-1"></i> Resultado de Compatibilidade</span>
-                    <button type="button" class="btn-copy-results" onclick="copyCompatResults(this)"><i class="bi bi-clipboard"></i> Copiar relatório</button>
-                </div>
-
-                <!-- Faixa de resumo com badges e barra de progresso -->
-                <div class="result-summary-strip">
-                    <span style="font-weight:700;color:#005fa9;font-size:0.92rem;">{{ report_title }}</span>
-                    <div class="d-flex gap-2 ms-auto flex-wrap">
-                        <span class="stat-badge total"><i class="bi bi-list-ul me-1"></i>{{ batch_results|length }} peças</span>
-                        <span class="stat-badge found"><i class="bi bi-check-circle me-1"></i>{{ found_count }} encontradas</span>
-                        {% if not_found_count > 0 %}
-                        <span class="stat-badge not-found"><i class="bi bi-x-circle me-1"></i>{{ not_found_count }} sem resultado</span>
-                        {% endif %}
+            <!-- Tab: By Name -->
+            <div id="tab-name" class="search-panel">
+                <form method="POST">
+                    <label for="name_query" class="form-label-custom">Buscar por Nome (FiatPecas.com.br)</label>
+                    <div class="name-search-bar">
+                        <input type="text" class="form-input" id="name_query" name="name_query" value="{{ name_query }}" placeholder="Ex: Lâmpada pingo d'água w5w">
+                        <button type="submit" class="btn-search-icon"><i class="bi bi-search"></i></button>
                     </div>
-                </div>
-                <div class="found-progress-wrap">
-                    <div class="found-progress-bar" style="width:{{ (found_count / batch_results|length * 100)|round|int }}%"></div>
-                </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
-                <!-- Barra de filtros -->
-                <div class="compat-filter-bar">
-                    <i class="bi bi-search text-muted" style="font-size:0.82rem;"></i>
-                    <input type="text" id="compat-filter" class="compat-filter-input"
-                           placeholder="Filtrar por código, descrição ou modelo..."
-                           oninput="filterCompatTable()">
-                    <button id="toggle-errors-btn" class="toggle-errors-btn" onclick="toggleErrorsOnly()">
-                        <i class="bi bi-check-circle me-1"></i> Apenas sem erro
-                    </button>
-                    <span id="filter-row-count" style="font-size:0.75rem;color:#888;margin-left:auto;"></span>
-                </div>
+    {% if request.args.get('refreshed') == 'success' %}
+    <div class="alert-modern alert-success-modern" style="padding-left:20px;padding-right:20px;">
+        <i class="bi bi-check-circle-fill"></i> Sessão renovada com sucesso!
+    </div>
+    {% elif request.args.get('refreshed') == 'error' %}
+    <div class="alert-modern alert-danger-modern" style="padding-left:20px;padding-right:20px;">
+        <i class="bi bi-exclamation-triangle-fill"></i> Falha ao renovar: {{ request.args.get('errmsg') }}
+    </div>
+    {% endif %}
 
-                <!-- Tabela com cabeçalho fixo e scroll vertical -->
-                <div class="table-scroll-wrap">
-                    <table class="table compat-table mb-0" id="compat-table">
-                        <thead>
-                            <tr>
-                                <th class="col-status" title="Status"></th>
-                                <th class="col-part">Peça</th>
-                                <th class="col-desc">Descrição</th>
-                                <th class="col-model">Modelo</th>
-                                <th class="col-result">Compatibilidade</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in batch_results %}
-                            <tr class="{{ 'found-row' if row.found else 'not-found-row' }}"
-                                data-found="{{ 'true' if row.found else 'false' }}">
-                                <td class="col-status">
-                                    <span class="status-dot {{ 'found' if row.found else 'not-found' }}"
-                                          title="{{ 'Compatível' if row.found else 'Sem resultado' }}"></span>
-                                </td>
-                                <td class="col-part">{{ row.code }}</td>
-                                <td class="col-desc">{{ row.description or '—' }}</td>
-                                <td class="col-model">{{ row.model or '—' }}</td>
-                                <td class="col-result">
-                                    {% if row.compatibility_details %}
-                                    <div class="compat-details">
-                                        {% for d in row.compatibility_details %}
-                                        <div class="compat-card">
-                                            <div class="compat-card-header">
-                                                {% if d.brand %}<span class="compat-brand">{{ d.brand }}</span>{% endif %}
-                                                <span class="compat-model-name">{{ d.model }}</span>
-                                            </div>
-                                            <div class="compat-meta">
-                                                {% if d.tables %}
-                                                <span class="compat-meta-item">
-                                                    <span class="compat-meta-label">Tabelas:</span> {{ d.tables }}
-                                                </span>
-                                                {% endif %}
-                                                {% if d.table_desc %}
-                                                <span class="compat-meta-item">
-                                                    <span class="compat-meta-label">Grupo:</span> {{ d.table_desc }}
-                                                </span>
-                                                {% endif %}
-                                                {% if d.part_dsc %}
-                                                <span class="compat-meta-item">
-                                                    <span class="compat-meta-label">Peça:</span> {{ d.part_dsc }}
-                                                </span>
-                                                {% endif %}
-                                            </div>
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% else %}
-                                    <span class="compat-error-msg">{{ row.result }}</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+    {% if error %}
+    <div class="alert-modern alert-danger-modern" style="max-width:960px;margin:0 auto 16px;padding-left:20px;padding-right:20px;">
+        <i class="bi bi-exclamation-triangle-fill"></i> {{ error | safe }}
+    </div>
+    {% endif %}
 
-                <!-- Rodapé de resumo -->
-                <div class="compat-summary">
-                    <span class="count-found">{{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação</span>
-                    /
-                    <span class="count-not-found">{{ not_found_count }} sem resultado no catálogo</span>
-                    {% if not_found_codes %}
-                    — sem resultado: {{ not_found_codes | join(', ') }}.
-                    {% else %}
-                    .
+    {% if batch_results %}
+    <div class="results-section">
+        <div class="results-panel">
+
+            <!-- Panel Header -->
+            <div class="panel-header">
+                <span class="panel-header-title">
+                    <i class="bi bi-clipboard-data"></i> Resultado de Compatibilidade
+                </span>
+                <button type="button" class="btn-copy-report" onclick="copyCompatResults(this)">
+                    <i class="bi bi-clipboard"></i> Copiar relatório
+                </button>
+            </div>
+
+            <!-- Summary Strip -->
+            <div class="summary-strip">
+                <span class="summary-title">{{ report_title }}</span>
+                <div class="summary-stats">
+                    <span class="stat-pill total"><i class="bi bi-list-ul"></i> {{ batch_results|length }} peças</span>
+                    <span class="stat-pill found"><i class="bi bi-check-circle"></i> {{ found_count }} encontradas</span>
+                    {% if not_found_count > 0 %}
+                    <span class="stat-pill not-found"><i class="bi bi-x-circle"></i> {{ not_found_count }} sem resultado</span>
                     {% endif %}
                 </div>
             </div>
+            <div class="progress-wrap">
+                <div class="progress-fill" style="width:{{ (found_count / batch_results|length * 100)|round|int }}%"></div>
+            </div>
 
-            <!-- Texto oculto para cópia (formato tabular estruturado) -->
-            <pre id="compat-results-text" style="display:none;">Resultado de Compatibilidade — {{ report_title }}
+            <!-- Filter Bar -->
+            <div class="filter-bar">
+                <div class="filter-icon-wrap" style="flex:1;min-width:200px;max-width:360px;">
+                    <i class="bi bi-search"></i>
+                    <input type="text" id="compat-filter" class="filter-input" style="width:100%;"
+                           placeholder="Filtrar por código, descrição ou modelo..."
+                           oninput="filterCompatTable()">
+                </div>
+                <button id="toggle-errors-btn" class="toggle-btn" onclick="toggleErrorsOnly()">
+                    <i class="bi bi-check-circle"></i> Apenas sem erro
+                </button>
+                <span id="filter-row-count" class="filter-count"></span>
+            </div>
+
+            <!-- Table -->
+            <div class="table-scroll-wrap">
+                <table class="compat-table" id="compat-table">
+                    <thead>
+                        <tr>
+                            <th class="col-status" title="Status"></th>
+                            <th class="col-part">Peça</th>
+                            <th class="col-desc">Descrição</th>
+                            <th class="col-model">Modelo</th>
+                            <th class="col-result">Compatibilidade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in batch_results %}
+                        <tr class="{{ 'found-row' if row.found else 'not-found-row' }}"
+                            data-found="{{ 'true' if row.found else 'false' }}">
+                            <td class="col-status">
+                                <span class="status-dot {{ 'found' if row.found else 'not-found' }}"
+                                      title="{{ 'Compatível' if row.found else 'Sem resultado' }}"></span>
+                            </td>
+                            <td class="col-part">{{ row.code }}</td>
+                            <td class="col-desc">{{ row.description or '—' }}</td>
+                            <td class="col-model">{{ row.model or '—' }}</td>
+                            <td class="col-result">
+                                {% if row.compatibility_details %}
+                                <div class="compat-details">
+                                    {% for d in row.compatibility_details %}
+                                    <div class="compat-card">
+                                        <div class="compat-card-header">
+                                            {% if d.brand %}<span class="compat-brand">{{ d.brand }}</span>{% endif %}
+                                            <span class="compat-model-name">{{ d.model }}</span>
+                                        </div>
+                                        <div class="compat-meta">
+                                            {% if d.tables %}
+                                            <span class="compat-meta-item">
+                                                <span class="compat-meta-label">Tabelas:</span> {{ d.tables }}
+                                            </span>
+                                            {% endif %}
+                                            {% if d.table_desc %}
+                                            <span class="compat-meta-item">
+                                                <span class="compat-meta-label">Grupo:</span> {{ d.table_desc }}
+                                            </span>
+                                            {% endif %}
+                                            {% if d.part_dsc %}
+                                            <span class="compat-meta-item">
+                                                <span class="compat-meta-label">Peça:</span> {{ d.part_dsc }}
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <span class="compat-error-msg">{{ row.result }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer summary -->
+            <div class="results-footer">
+                <span class="count-found">{{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação</span>
+                /
+                <span class="count-not-found">{{ not_found_count }} sem resultado no catálogo</span>
+                {% if not_found_codes %}
+                — sem resultado: {{ not_found_codes | join(', ') }}.
+                {% else %}
+                .
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Hidden text for copy -->
+        <pre id="compat-results-text" style="display:none;">Resultado de Compatibilidade — {{ report_title }}
 
 Peça	Descrição	Marca	Modelo	Tabelas	Grupo	Peça Catálogo
 {% for row in batch_results %}{% if row.compatibility_details %}{% for d in row.compatibility_details %}{{ row.code }}	{{ row.description or '—' }}	{{ d.brand or '—' }}	{{ d.model }}	{{ d.tables or '—' }}	{{ d.table_desc or '—' }}	{{ d.part_dsc or '—' }}
 {% endfor %}{% else %}{{ row.code }}	{{ row.description or '—' }}	—	{{ row.model or '—' }}	—	—	{{ row.result }}
 {% endif %}{% endfor %}
 {{ found_count }} peça{{ 's' if found_count != 1 else '' }} com aplicação / {{ not_found_count }} sem resultado no catálogo{% if not_found_codes %} ({{ not_found_codes | join(', ') }}){% endif %}.</pre>
-        </div>
-        {% endif %}
+    </div>
+    {% endif %}
 
-        {% if products %}
-        <!-- FiatPecas Products Panel -->
-        <div class="mx-auto" style="max-width: 1200px;">
-            <div class="eper-panel mt-4">
-                <div class="eper-panel-header"><i class="bi bi-shop me-1"></i> Produtos Encontrados no FiatPecas.com.br</div>
-                <div class="p-3">
-                    <div class="row g-3">
-                        {% for p in products %}
-                        <div class="col-6 col-sm-4 col-md-3 col-lg-2">
-                            <div class="product-card">
-                                <div class="product-card-img-wrap">
-                                    {% if p.image %}
-                                    <img src="{{ p.image }}" alt="{{ p.name }}" loading="lazy">
-                                    {% else %}
-                                    <i class="bi bi-image text-muted" style="font-size:2rem;"></i>
-                                    {% endif %}
-                                </div>
-                                <div class="product-card-body">
-                                    <div class="product-card-name">{{ p.name }}</div>
-                                    {% if p.price_original and p.price_pix and p.price_original != p.price_pix %}
-                                    <div class="product-card-price-original">{{ p.price_original }}</div>
-                                    {% endif %}
-                                    {% if p.price_pix %}
-                                    <div class="product-card-price-pix">{{ p.price_pix }}</div>
-                                    <div class="product-card-price-pix-label">no PIX</div>
-                                    {% elif p.price_original %}
-                                    <div class="product-card-price-pix">{{ p.price_original }}</div>
-                                    {% endif %}
-                                    {% if p.installments %}
-                                    <div class="product-card-installments">{{ p.installments }}</div>
-                                    {% endif %}
-                                    {% if not p.available %}
-                                    <div class="product-unavailable">Indisponível</div>
-                                    {% endif %}
-                                </div>
-                                <div class="btn-product-actions">
-                                    <a href="{{ p.url }}" target="_blank" class="btn-link-product"><i class="bi bi-box-arrow-up-right"></i> LINK</a>
-                                    <button type="button" class="btn-copy-product" title="Copiar link" data-url="{{ p.url }}" onclick="copyProductLink(this, this.dataset.url)"><i class="bi bi-clipboard"></i></button>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
+    {% if products %}
+    <!-- Products Panel -->
+    <div class="products-section">
+        <div class="results-panel">
+            <div class="panel-header">
+                <span class="panel-header-title">
+                    <i class="bi bi-shop"></i> Produtos Encontrados no FiatPecas.com.br
+                </span>
+            </div>
+            <div class="products-grid">
+                {% for p in products %}
+                <div class="product-card">
+                    <div class="product-card-img-wrap">
+                        {% if p.image %}
+                        <img src="{{ p.image }}" alt="{{ p.name }}" loading="lazy">
+                        {% else %}
+                        <i class="bi bi-image" style="font-size:2rem;color:#334155;"></i>
+                        {% endif %}
+                    </div>
+                    <div class="product-card-body">
+                        <div class="product-card-name">{{ p.name }}</div>
+                        {% if p.price_original and p.price_pix and p.price_original != p.price_pix %}
+                        <div class="product-card-price-original">{{ p.price_original }}</div>
+                        {% endif %}
+                        {% if p.price_pix %}
+                        <div class="product-card-price-pix">{{ p.price_pix }}</div>
+                        <div class="product-card-price-pix-label">no PIX</div>
+                        {% elif p.price_original %}
+                        <div class="product-card-price-pix">{{ p.price_original }}</div>
+                        {% endif %}
+                        {% if p.installments %}
+                        <div class="product-card-installments">{{ p.installments }}</div>
+                        {% endif %}
+                        {% if not p.available %}
+                        <div class="product-unavailable">Indisponível</div>
+                        {% endif %}
+                    </div>
+                    <div class="btn-product-actions">
+                        <a href="{{ p.url }}" target="_blank" class="btn-link-product"><i class="bi bi-box-arrow-up-right"></i> LINK</a>
+                        <button type="button" class="btn-copy-product" title="Copiar link" data-url="{{ p.url }}" onclick="copyProductLink(this, this.dataset.url)"><i class="bi bi-clipboard"></i></button>
                     </div>
                 </div>
+                {% endfor %}
             </div>
         </div>
-        {% endif %}
+    </div>
+    {% endif %}
 
-        {% if not products and name_query and not error %}
-        <div class="mx-auto" style="max-width: 1200px;">
-            <div class="eper-panel mt-4">
-                <div class="eper-panel-header"><i class="bi bi-shop me-1"></i> Produtos Encontrados no FiatPecas.com.br</div>
-                <div class="no-results-msg">
-                    <i class="bi bi-search" style="font-size:1.5rem; color:#aaa; display:block; margin-bottom:8px;"></i>
-                    Desculpe, sua busca por <strong>"{{ name_query if name_query else part }}"</strong> não retornou nenhum resultado.
-                </div>
+    {% if not products and name_query and not error %}
+    <div class="products-section">
+        <div class="results-panel">
+            <div class="panel-header">
+                <span class="panel-header-title">
+                    <i class="bi bi-shop"></i> Produtos Encontrados no FiatPecas.com.br
+                </span>
+            </div>
+            <div class="no-results-msg">
+                <i class="bi bi-search"></i>
+                Desculpe, sua busca por <strong>"{{ name_query if name_query else part }}"</strong> não retornou nenhum resultado.
             </div>
         </div>
-        {% endif %}
+    </div>
+    {% endif %}
 
+    <!-- Footer -->
+    <div class="app-footer">
+        Versão: 2.0.0 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 16/07/2026 16:00
     </div>
 
-    <!-- Footer com Versão -->
-    <div style="text-align: center; padding: 20px; color: #888; font-size: 0.7rem; margin-top: 40px; border-top: 1px solid #ddd;">
-        Versão: 1.3.0 | ÚLTIMA ATUALIZAÇÃO NO SERVIDOR: 23/06/2026 15:00
-    </div>
-
-    <!-- Auth Status Banner (fixed bottom, shown by JS while Selenium login runs in background) -->
-    <div id="auth-status-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:1050;background:#cfe2ff;border-top:2px solid #9ec5fe;padding:10px 20px;">
-        <div class="d-flex align-items-center" style="max-width:960px;margin:0 auto;gap:12px;">
-            <span class="spinner-border spinner-border-sm flex-shrink-0" id="auth-banner-spinner" style="color:#0a58ca;"></span>
-            <span id="auth-banner-msg" style="font-size:0.85rem;color:#084298;flex:1;">Autenticação em andamento. A busca estará disponível em breve...</span>
-            <a href="/compatibilidade/login" style="background:#005fa9;color:white;border-radius:0;font-size:0.78rem;padding:4px 12px;text-decoration:none;white-space:nowrap;flex-shrink:0;">Ver status</a>
+    <!-- Auth Status Banner -->
+    <div id="auth-status-banner">
+        <div class="banner-inner">
+            <span class="spinner-border spinner-border-sm" id="auth-banner-spinner"></span>
+            <span id="auth-banner-msg">Autenticação em andamento. A busca estará disponível em breve...</span>
+            <a href="/compatibilidade/login" class="banner-link">Ver status</a>
         </div>
     </div>
 
@@ -1002,8 +1547,11 @@ Peça	Descrição	Marca	Modelo	Tabelas	Grupo	Peça Catálogo
 
         function showError(text) {
             if (!banner) return;
-            banner.style.background = '#f8d7da';
-            banner.style.borderTopColor = '#f5c2c7';
+            var inner = banner.querySelector('.banner-inner');
+            if (inner) {
+                inner.style.background = 'rgba(127,29,29,0.9)';
+                inner.style.borderColor = 'rgba(239,68,68,0.3)';
+            }
             if (spin) spin.style.display = 'none';
             if (msg) msg.innerHTML = text;
             banner.style.display = 'block';
@@ -1016,14 +1564,17 @@ Peça	Descrição	Marca	Modelo	Tabelas	Grupo	Peça Catálogo
                     .then(function(d) {
                         if (d.state === 'success') {
                             if (banner) {
-                                banner.style.background = '#d1e7dd';
-                                banner.style.borderTopColor = '#a3cfbb';
+                                var inner = banner.querySelector('.banner-inner');
+                                if (inner) {
+                                    inner.style.background = 'rgba(6,78,59,0.9)';
+                                    inner.style.borderColor = 'rgba(16,185,129,0.3)';
+                                }
                                 if (spin) spin.style.display = 'none';
                                 if (msg) msg.textContent = 'Sessão autenticada! Você já pode realizar buscas.';
                                 setTimeout(function() { banner.style.display = 'none'; }, 4000);
                             }
                         } else if (d.state === 'error') {
-                            showError('Falha na autenticação. <a href="/compatibilidade/login" style="color:#842029;font-weight:600;">Clique aqui para renovar a sessão.</a>');
+                            showError('Falha na autenticação. <a href="/compatibilidade/login" style="color:#fca5a5;font-weight:600;">Clique aqui para renovar a sessão.</a>');
                         } else {
                             pollUntilDone();
                         }
@@ -1039,10 +1590,16 @@ Peça	Descrição	Marca	Modelo	Tabelas	Grupo	Peça Catálogo
                     if (banner) banner.style.display = 'block';
                     pollUntilDone();
                 } else if (d.state === 'error') {
-                    showError('Sessão não autenticada. <a href="/compatibilidade/login" style="color:#842029;font-weight:600;">Clique aqui para iniciar sessão.</a>');
+                    showError('Sessão não autenticada. <a href="/compatibilidade/login" style="color:#fca5a5;font-weight:600;">Clique aqui para iniciar sessão.</a>');
                 }
             })
             .catch(function() {});
+
+        // Auto-switch to name tab if name_query has value
+        var nameInput = document.getElementById('name_query');
+        if (nameInput && nameInput.value && !document.getElementById('parts_bulk').value) {
+            switchTab('tab-name');
+        }
     })();
     </script>
 
@@ -1050,7 +1607,9 @@ Peça	Descrição	Marca	Modelo	Tabelas	Grupo	Peça Catálogo
 </html>
 """
 
+
 HTML_TEMPLATE_COMPILED = app.jinja_env.from_string(HTML_TEMPLATE)
+
 
 
 def _parse_fiatpecas_html(html: str) -> list:
